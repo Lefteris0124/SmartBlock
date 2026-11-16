@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'property_owners_screen.dart';
+import 'property_modules_screen.dart';
 
 class PropertyDetailsScreen extends StatefulWidget {
   const PropertyDetailsScreen({
     required this.property,
-    required this.organizationId,
+    this.organizationId,
     required this.organizationName,
     required this.organizationApprovalStatus,
     required this.isGreek,
@@ -14,7 +15,7 @@ class PropertyDetailsScreen extends StatefulWidget {
   });
 
   final Map<String, dynamic> property;
-  final String organizationId;
+  final String? organizationId;
   final String organizationName;
   final String organizationApprovalStatus;
   final bool isGreek;
@@ -53,6 +54,7 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
   String _typeLabel(String? type) {
     const greek = {
       'apartment': 'Διαμέρισμα',
+      'building': 'Πολυκατοικία',
       'house': 'Κατοικία',
       'shop': 'Κατάστημα',
       'office': 'Γραφείο',
@@ -62,6 +64,7 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
     };
     const english = {
       'apartment': 'Apartment',
+      'building': 'Apartment building',
       'house': 'House',
       'shop': 'Shop',
       'office': 'Office',
@@ -139,6 +142,27 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
         ),
       ),
     );
+    try {
+      final row = await _client
+          .from('properties')
+          .select('organization_id')
+          .eq('id', _property['id'])
+          .single();
+      if (mounted)
+        setState(() => _property['organization_id'] = row['organization_id']);
+    } catch (_) {}
+  }
+
+  Future<void> _openModules() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PropertyModulesScreen(
+          propertyId: _property['id'] as String,
+          propertyName: _property['name'] as String? ?? '',
+          isGreek: _isGreek,
+        ),
+      ),
+    );
   }
 
   Widget _detailTile(IconData icon, String label, String value) => Card(
@@ -162,7 +186,7 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
     ].whereType<String>().where((part) => part.trim().isNotEmpty).join(', ');
     final status = _property['approval_status'] as String?;
     final canSubmit =
-        widget.organizationApprovalStatus == 'approved' &&
+        _property['organization_id'] != null &&
         (status == 'draft' || status == 'changes_required');
 
     return Scaffold(
@@ -195,7 +219,9 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
           _detailTile(
             Icons.home_work_outlined,
             _isGreek ? 'Τύπος ακινήτου' : 'Property type',
-            _typeLabel(_property['property_type'] as String?),
+            _property['property_type'] == 'other'
+                ? '${_typeLabel('other')}: ${_property['other_description'] ?? ''}'
+                : _typeLabel(_property['property_type'] as String?),
           ),
           _detailTile(
             Icons.location_on_outlined,
@@ -212,7 +238,13 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
           _detailTile(
             Icons.apartment_outlined,
             _isGreek ? 'Οργανισμός' : 'Organization',
-            widget.organizationName,
+            widget.organizationName.isEmpty
+                ? (_property['organization_id'] == null
+                      ? (_isGreek
+                            ? 'Δεν έχει οριστεί ακόμη'
+                            : 'Not assigned yet')
+                      : (_isGreek ? 'Συνδεδεμένος ιδιοκτήτης' : 'Owner linked'))
+                : widget.organizationName,
           ),
           const SizedBox(height: 20),
           OutlinedButton.icon(
@@ -220,6 +252,16 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
             icon: const Icon(Icons.people_outline),
             label: Text(
               _isGreek ? 'Συνιδιοκτήτες και ποσοστά' : 'Co-owners and shares',
+            ),
+          ),
+          const SizedBox(height: 10),
+          FilledButton.tonalIcon(
+            onPressed: _openModules,
+            icon: const Icon(Icons.dashboard_customize_outlined),
+            label: Text(
+              _isGreek
+                  ? 'Ψηφοφορίες · Κοινόχρηστα · Ενοίκια'
+                  : 'Votes · Common charges · Rent',
             ),
           ),
           if (canSubmit) ...[

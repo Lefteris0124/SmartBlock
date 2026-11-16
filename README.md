@@ -8,6 +8,9 @@
 - Property registration and co-owner share tracking.
 - Property details and guarded submission for review after organization approval.
 - Database-enforced ownership share limits and row-level access policies.
+- Property-first drafts, apartment buildings, and required descriptions for “Other”.
+- Phone-based owner organization matching and property owner linking.
+- SmartBlock staff review screens, property votes, common charge runs, and rental contracts.
 
 ## Run the Flutter app
 
@@ -31,5 +34,7 @@ For a signed Android release, keep `android/key.properties` and `android/app/sma
 The workflow in `.github/workflows/deploy-web.yml` builds and deploys the Web app on pushes to `main`. In the GitHub repository, set the `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` repository variables under **Settings → Secrets and variables → Actions → Variables**, then select **GitHub Actions** as the Pages build source. The publishable key is intended for client-side use; never add a `service_role` key to repository variables or the web build.
 
 Use the publishable key for the client app. Do not use a secret or `service_role` key in Flutter.
+
+SB_105 enables property-first creation, phone lookup for owners, staff roles, and review actions. SB_106 adds voting, common-charge allocation/payment tracking, and rental contracts. Apply each once in the Supabase SQL Editor after reviewing it. To make the signed-in operator an admin, run a private one-time insert into `public.smartblock_staff` for their `auth.users.id`; do not commit user IDs or service-role credentials. The app exposes the admin review menu only when `is_smartblock_staff()` returns true.
 
 The organization, property, co-owner, and review workflow database scripts are archived in `supabase/queries`. SB_092–SB_104 have been applied to the linked Supabase project. They are retained as reference SQL; do not rerun the table-creation scripts SB_092–SB_096.

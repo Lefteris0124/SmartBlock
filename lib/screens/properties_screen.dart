@@ -5,16 +5,16 @@ import 'property_details_screen.dart';
 
 class PropertiesScreen extends StatefulWidget {
   const PropertiesScreen({
-    required this.organizationId,
-    required this.organizationName,
-    required this.organizationApprovalStatus,
+    this.organizationId,
+    this.organizationName,
+    this.organizationApprovalStatus,
     required this.isGreek,
     super.key,
   });
 
-  final String organizationId;
-  final String organizationName;
-  final String organizationApprovalStatus;
+  final String? organizationId;
+  final String? organizationName;
+  final String? organizationApprovalStatus;
   final bool isGreek;
 
   @override
@@ -22,185 +22,167 @@ class PropertiesScreen extends StatefulWidget {
 }
 
 class _PropertiesScreenState extends State<PropertiesScreen> {
-  final SupabaseClient _client = Supabase.instance.client;
+  final _client = Supabase.instance.client;
   late Future<List<Map<String, dynamic>>> _propertiesFuture;
-  late bool _isGreek;
+  late bool _greek;
 
   @override
   void initState() {
     super.initState();
-    _isGreek = widget.isGreek;
-    _propertiesFuture = _loadProperties();
+    _greek = widget.isGreek;
+    _propertiesFuture = _load();
   }
 
-  Future<List<Map<String, dynamic>>> _loadProperties() async {
-    final rows = await _client
+  Future<List<Map<String, dynamic>>> _load() async {
+    var query = _client
         .from('properties')
         .select(
-          'id, name, property_type, address, city, country, management_model, approval_status',
-        )
-        .eq('organization_id', widget.organizationId)
-        .order('created_at', ascending: false);
+          'id, name, property_type, other_description, address, city, country, management_model, approval_status, organization_id, created_by',
+        );
+    final userId = _client.auth.currentUser?.id;
+    if (widget.organizationId != null && userId != null) {
+      query = query.or(
+        'created_by.eq.$userId,organization_id.eq.${widget.organizationId}',
+      );
+    } else if (widget.organizationId != null) {
+      query = query.eq('organization_id', widget.organizationId!);
+    } else if (userId != null) {
+      query = query.eq('created_by', userId);
+    }
+    final rows = await query.order('created_at', ascending: false);
     return List<Map<String, dynamic>>.from(rows);
   }
 
   Future<void> _refresh() async {
-    final future = _loadProperties();
-    setState(() => _propertiesFuture = future);
+    final pending = _load();
+    setState(() => _propertiesFuture = pending);
     try {
-      await future;
-    } catch (_) {
-      // The page shows a retry action for query errors.
-    }
+      await pending;
+    } catch (_) {}
   }
 
   Future<void> _createProperty() async {
-    final nameController = TextEditingController();
-    final addressController = TextEditingController();
-    final cityController = TextEditingController();
-    final ownershipController = TextEditingController(text: '100');
-    final formKey = GlobalKey<FormState>();
-    var propertyType = 'house';
-    var managementModel = 'self_service';
-    var isSaving = false;
-
-    final created = await showDialog<bool>(
+    final name = TextEditingController();
+    final address = TextEditingController();
+    final city = TextEditingController();
+    final other = TextEditingController();
+    final form = GlobalKey<FormState>();
+    var type = 'apartment';
+    var model = 'self_service';
+    var saving = false;
+    final saved = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => AlertDialog(
-          title: Text(_isGreek ? 'Νέο ακίνητο' : 'New property'),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: Text(_greek ? 'Νέο ακίνητο' : 'New property'),
           content: SizedBox(
             width: 440,
             child: Form(
-              key: formKey,
+              key: form,
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     DropdownButtonFormField<String>(
-                      initialValue: propertyType,
+                      value: type,
                       decoration: InputDecoration(
-                        labelText: _isGreek
-                            ? 'Τύπος ακινήτου'
-                            : 'Property type',
+                        labelText: _greek ? 'Τύπος ακινήτου' : 'Property type',
                       ),
                       items: [
-                        _typeOption('house', _isGreek ? 'Κατοικία' : 'House'),
-                        _typeOption('shop', _isGreek ? 'Κατάστημα' : 'Shop'),
-                        _typeOption('office', _isGreek ? 'Γραφείο' : 'Office'),
-                        _typeOption(
-                          'warehouse',
-                          _isGreek ? 'Αποθήκη' : 'Warehouse',
+                        _option(
+                          'apartment',
+                          _greek ? 'Διαμέρισμα' : 'Apartment',
                         ),
-                        _typeOption('land', _isGreek ? 'Οικόπεδο' : 'Land'),
-                        _typeOption('other', _isGreek ? 'Άλλο' : 'Other'),
+                        _option(
+                          'building',
+                          _greek ? 'Πολυκατοικία' : 'Apartment building',
+                        ),
+                        _option('house', _greek ? 'Κατοικία' : 'House'),
+                        _option('shop', _greek ? 'Κατάστημα' : 'Shop'),
+                        _option('office', _greek ? 'Γραφείο' : 'Office'),
+                        _option('warehouse', _greek ? 'Αποθήκη' : 'Warehouse'),
+                        _option('land', _greek ? 'Οικόπεδο' : 'Land'),
+                        _option('other', _greek ? 'Άλλο' : 'Other'),
                       ],
-                      onChanged: isSaving
+                      onChanged: saving
                           ? null
-                          : (value) {
-                              if (value != null) {
-                                setDialogState(() => propertyType = value);
-                              }
+                          : (v) {
+                              if (v != null) setDialog(() => type = v);
                             },
                     ),
-                    const SizedBox(height: 14),
-                    TextFormField(
-                      controller: nameController,
-                      textCapitalization: TextCapitalization.words,
-                      decoration: InputDecoration(
-                        labelText: _isGreek
-                            ? 'Όνομα ακινήτου'
-                            : 'Property name',
+                    if (type == 'other') ...[
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: other,
+                        decoration: InputDecoration(
+                          labelText: _greek
+                              ? 'Προσδιορίστε το άλλο είδος'
+                              : 'Specify the property type',
+                        ),
+                        validator: (v) => v == null || v.trim().isEmpty
+                            ? (_greek
+                                  ? 'Απαιτείται περιγραφή.'
+                                  : 'Description is required.')
+                            : null,
                       ),
-                      validator: (value) =>
-                          value == null || value.trim().isEmpty
-                          ? (_isGreek ? 'Συμπλήρωσε όνομα.' : 'Enter a name.')
-                          : null,
-                    ),
-                    const SizedBox(height: 14),
+                    ],
+                    const SizedBox(height: 12),
                     TextFormField(
-                      controller: addressController,
-                      textCapitalization: TextCapitalization.words,
+                      controller: name,
                       decoration: InputDecoration(
-                        labelText: _isGreek ? 'Διεύθυνση' : 'Address',
+                        labelText: _greek ? 'Όνομα ακινήτου' : 'Property name',
                       ),
-                      validator: (value) =>
-                          value == null || value.trim().isEmpty
-                          ? (_isGreek
-                                ? 'Η διεύθυνση είναι υποχρεωτική.'
-                                : 'Address is required.')
-                          : null,
+                      validator: _required,
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
                     TextFormField(
-                      controller: cityController,
-                      textCapitalization: TextCapitalization.words,
+                      controller: address,
                       decoration: InputDecoration(
-                        labelText: _isGreek ? 'Πόλη' : 'City',
+                        labelText: _greek ? 'Διεύθυνση' : 'Address',
+                      ),
+                      validator: _required,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: city,
+                      decoration: InputDecoration(
+                        labelText: _greek ? 'Πόλη' : 'City',
                       ),
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
-                      initialValue: managementModel,
+                      value: model,
                       decoration: InputDecoration(
-                        labelText: _isGreek
+                        labelText: _greek
                             ? 'Μοντέλο διαχείρισης'
                             : 'Management model',
                       ),
                       items: [
-                        _typeOption(
+                        _option(
                           'self_service',
-                          _isGreek ? 'Αυτοδιαχείριση' : 'Self-service',
+                          _greek ? 'Αυτοδιαχείριση' : 'Self-service',
                         ),
-                        _typeOption(
+                        _option(
                           'assisted',
-                          _isGreek ? 'Υποβοηθούμενη' : 'Assisted',
+                          _greek ? 'Υποβοηθούμενη' : 'Assisted',
                         ),
-                        _typeOption(
+                        _option(
                           'managed',
-                          _isGreek ? 'Πλήρης διαχείριση' : 'Managed',
+                          _greek ? 'Πλήρης διαχείριση' : 'Managed',
                         ),
                       ],
-                      onChanged: isSaving
+                      onChanged: saving
                           ? null
-                          : (value) {
-                              if (value != null) {
-                                setDialogState(() => managementModel = value);
-                              }
+                          : (v) {
+                              if (v != null) setDialog(() => model = v);
                             },
                     ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: ownershipController,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: InputDecoration(
-                        labelText: _isGreek
-                            ? 'Μερίδιο οργανισμού'
-                            : 'Organization ownership share',
-                        suffixText: '%',
-                      ),
-                      validator: (value) {
-                        final percentage = double.tryParse(
-                          (value ?? '').trim().replaceAll(',', '.'),
-                        );
-                        if (percentage == null ||
-                            percentage <= 0 ||
-                            percentage > 100) {
-                          return _isGreek
-                              ? 'Το ποσοστό πρέπει να είναι από 0,01 έως 100.'
-                              : 'Enter a share between 0.01 and 100.';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 14),
                     Text(
-                      _isGreek
-                          ? 'Το μερίδιο του οργανισμού θα καταχωριστεί ως αρχική ιδιοκτησία. Μπορείς να αφήσεις υπόλοιπο για συνιδιοκτήτες.'
-                          : 'The organization share is saved as the initial ownership record. Leave a remainder for co-owners if needed.',
-                      style: Theme.of(dialogContext).textTheme.bodySmall,
+                      _greek
+                          ? 'Πρώτα αποθηκεύεται το ακίνητο. Ο ιδιοκτήτης/οργανισμός προστίθεται έπειτα μέσα από τα στοιχεία του.'
+                          : 'Save the property first. Add its owner organization afterward from the property details.',
+                      style: Theme.of(ctx).textTheme.bodySmall,
                     ),
                   ],
                 ),
@@ -209,345 +191,165 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: isSaving
-                  ? null
-                  : () => Navigator.pop(dialogContext, false),
-              child: Text(_isGreek ? 'Άκυρο' : 'Cancel'),
+              onPressed: saving ? null : () => Navigator.pop(ctx, false),
+              child: Text(_greek ? 'Άκυρο' : 'Cancel'),
             ),
             FilledButton(
-              onPressed: isSaving
+              onPressed: saving
                   ? null
                   : () async {
-                      if (!formKey.currentState!.validate()) return;
-                      final user = _client.auth.currentUser;
-                      if (user == null) {
-                        Navigator.pop(dialogContext, false);
-                        return;
-                      }
-                      setDialogState(() => isSaving = true);
+                      if (!form.currentState!.validate()) return;
+                      setDialog(() => saving = true);
                       try {
-                        await _client.rpc(
-                          'create_property_with_initial_ownership',
+                        final id = await _client.rpc(
+                          'create_property_draft',
                           params: {
-                            'p_organization_id': widget.organizationId,
-                            'p_name': nameController.text.trim(),
-                            'p_property_type': propertyType,
-                            'p_address': addressController.text.trim(),
-                            'p_city': cityController.text.trim(),
-                            'p_management_model': managementModel,
-                            'p_ownership_percentage': double.parse(
-                              ownershipController.text.trim().replaceAll(
-                                ',',
-                                '.',
-                              ),
-                            ),
+                            'p_name': name.text.trim(),
+                            'p_property_type': type,
+                            'p_address': address.text.trim(),
+                            'p_city': city.text.trim(),
+                            'p_country': 'Cyprus',
+                            'p_management_model': model,
+                            'p_other_description': type == 'other'
+                                ? other.text.trim()
+                                : null,
                           },
                         );
-                        if (dialogContext.mounted) {
-                          Navigator.pop(dialogContext, true);
+                        if (ctx.mounted) Navigator.pop(ctx, id != null);
+                      } on PostgrestException catch (e) {
+                        if (ctx.mounted) {
+                          setDialog(() => saving = false);
+                          ScaffoldMessenger.of(ctx)
+                              .showSnackBar(SnackBar(content: Text(e.message)));
                         }
-                      } on PostgrestException catch (error) {
-                        if (!dialogContext.mounted) return;
-                        setDialogState(() => isSaving = false);
-                        ScaffoldMessenger.of(
-                          dialogContext,
-                        ).showSnackBar(SnackBar(content: Text(error.message)));
-                      } catch (_) {
-                        if (!dialogContext.mounted) return;
-                        setDialogState(() => isSaving = false);
-                        ScaffoldMessenger.of(dialogContext).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              _isGreek
-                                  ? 'Δεν ήταν δυνατή η αποθήκευση.'
-                                  : 'Could not save the property.',
-                            ),
-                          ),
-                        );
                       }
                     },
-              child: isSaving
+              child: saving
                   ? const SizedBox.square(
                       dimension: 18,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : Text(_isGreek ? 'Αποθήκευση' : 'Save'),
+                  : Text(_greek ? 'Αποθήκευση' : 'Save'),
             ),
           ],
         ),
       ),
     );
-
-    nameController.dispose();
-    addressController.dispose();
-    cityController.dispose();
-    ownershipController.dispose();
-    if (created == true && mounted) await _refresh();
+    name.dispose();
+    address.dispose();
+    city.dispose();
+    other.dispose();
+    if (saved == true && mounted) await _refresh();
   }
 
-  DropdownMenuItem<String> _typeOption(String value, String label) =>
+  String? _required(String? value) => value == null || value.trim().isEmpty
+      ? (_greek ? 'Υποχρεωτικό πεδίο.' : 'Required field.')
+      : null;
+  DropdownMenuItem<String> _option(String value, String label) =>
       DropdownMenuItem(value: value, child: Text(label));
 
-  String _typeLabel(String? type) {
-    final labels = _isGreek
-        ? const {
-            'house': 'Κατοικία',
-            'shop': 'Κατάστημα',
-            'office': 'Γραφείο',
-            'warehouse': 'Αποθήκη',
-            'land': 'Οικόπεδο',
-            'other': 'Άλλο',
-          }
-        : const {
-            'house': 'House',
-            'shop': 'Shop',
-            'office': 'Office',
-            'warehouse': 'Warehouse',
-            'land': 'Land',
-            'other': 'Other',
-          };
-    return labels[type] ?? (type ?? '');
-  }
-
-  String _modelLabel(String? model) {
-    final labels = _isGreek
-        ? const {
-            'managed': 'Πλήρης διαχείριση',
-            'assisted': 'Υποβοηθούμενη',
-            'self_service': 'Αυτοδιαχείριση',
-          }
-        : const {
-            'managed': 'Managed',
-            'assisted': 'Assisted',
-            'self_service': 'Self-service',
-          };
-    return labels[model] ?? (model ?? '');
-  }
-
-  String _statusLabel(String? status) {
-    if (_isGreek) {
-      switch (status) {
-        case 'draft':
-          return 'Πρόχειρο';
-        case 'pending_review':
-          return 'Σε αναμονή έγκρισης';
-        case 'under_review':
-          return 'Υπό εξέταση';
-        case 'changes_required':
-          return 'Απαιτούνται αλλαγές';
-        case 'approved':
-          return 'Εγκεκριμένο';
-        case 'rejected':
-          return 'Απορρίφθηκε';
-        case 'suspended':
-          return 'Σε αναστολή';
-      }
-    }
-    return (status ?? 'unknown').replaceAll('_', ' ');
-  }
-
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.organizationName),
-        actions: [
-          IconButton(
-            tooltip: _isGreek ? 'English' : 'Ελληνικά',
-            onPressed: () => setState(() => _isGreek = !_isGreek),
-            icon: const Icon(Icons.language),
-          ),
-        ],
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: Text(
+        widget.organizationName ??
+            (_greek ? 'Τα ακίνητά μου' : 'My properties'),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _createProperty,
-        icon: const Icon(Icons.add_home_work_outlined),
-        label: Text(_isGreek ? 'Νέο ακίνητο' : 'New property'),
-      ),
-      body: RefreshIndicator(
-        onRefresh: _refresh,
-        child: FutureBuilder<List<Map<String, dynamic>>>(
-          future: _propertiesFuture,
-          builder: (context, snapshot) {
-            final properties = snapshot.data ?? const [];
-            return ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 96),
-              children: [
-                Text(
-                  _isGreek ? 'Ακίνητα οργανισμού' : 'Organization properties',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFF17324D),
+      actions: [
+        IconButton(
+          onPressed: () => setState(() => _greek = !_greek),
+          icon: const Icon(Icons.language),
+        ),
+      ],
+    ),
+    floatingActionButton: FloatingActionButton.extended(
+      onPressed: _createProperty,
+      icon: const Icon(Icons.add_home_work_outlined),
+      label: Text(_greek ? 'Νέο ακίνητο' : 'New property'),
+    ),
+    body: RefreshIndicator(
+      onRefresh: _refresh,
+      child: FutureBuilder<List<Map<String, dynamic>>>(
+        future: _propertiesFuture,
+        builder: (context, snapshot) {
+          final properties = snapshot.data ?? const [];
+          return ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(20),
+            children: [
+              Text(
+                _greek ? 'Ακίνητα' : 'Properties',
+                style: Theme.of(context).textTheme.headlineSmall
+                    ?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _greek
+                    ? 'Δημιούργησε πρώτα το ακίνητο και σύνδεσε μετά τους ιδιοκτήτες με τον αριθμό τηλεφώνου τους.'
+                    : 'Create the property first, then link its owners by phone number.',
+              ),
+              const SizedBox(height: 20),
+              if (snapshot.connectionState == ConnectionState.waiting)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(32),
+                    child: CircularProgressIndicator(),
                   ),
-                ),
-                const SizedBox(height: 8),
-                if (widget.organizationApprovalStatus == 'pending_review' ||
-                    widget.organizationApprovalStatus == 'under_review' ||
-                    widget.organizationApprovalStatus == 'changes_required')
-                  Card(
-                    elevation: 0,
-                    color: Theme.of(context).colorScheme.tertiaryContainer,
+                )
+              else if (snapshot.hasError)
+                Text(snapshot.error.toString())
+              else if (properties.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(28),
+                  child: Text(
+                    _greek
+                        ? 'Δεν υπάρχουν ακίνητα ακόμη.'
+                        : 'No properties yet.',
+                  ),
+                )
+              else
+                ...properties.map(
+                  (p) => Card(
                     child: ListTile(
-                      leading: const Icon(Icons.hourglass_top_rounded),
-                      title: Text(
-                        _isGreek
-                            ? 'Εκκρεμεί η έγκριση του οργανισμού'
-                            : 'Organization review is in progress',
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
+                      title: Text(p['name'] as String? ?? ''),
                       subtitle: Text(
-                        _isGreek
-                            ? 'Μπορείς να προετοιμάσεις ακίνητα τώρα. Θα αποθηκευτούν ως πρόχειρα μέχρι να ολοκληρωθεί ο έλεγχος.'
-                            : 'You can prepare property records now. They will remain drafts until the review is complete.',
+                        [
+                              p['property_type'] == 'other'
+                                  ? p['other_description']
+                                  : p['property_type'],
+                              p['address'],
+                              p['city'],
+                              p['approval_status'],
+                            ]
+                            .whereType<String>()
+                            .where((s) => s.isNotEmpty)
+                            .join(' · '),
                       ),
-                    ),
-                  )
-                else
-                  Text(
-                    _isGreek
-                        ? 'Τα ακίνητα παραμένουν σε πρόχειρη κατάσταση μέχρι να εγκριθούν.'
-                        : 'Properties remain drafts until they are reviewed.',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                const SizedBox(height: 24),
-                if (snapshot.connectionState == ConnectionState.waiting)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 48),
-                    child: Center(child: CircularProgressIndicator()),
-                  )
-                else if (snapshot.hasError)
-                  Card(
-                    color: Theme.of(context).colorScheme.errorContainer,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _isGreek
-                                ? 'Δεν φορτώθηκαν τα ακίνητα'
-                                : 'Could not load properties',
-                          ),
-                          const SizedBox(height: 8),
-                          Text(snapshot.error.toString()),
-                          TextButton.icon(
-                            onPressed: _refresh,
-                            icon: const Icon(Icons.refresh),
-                            label: Text(
-                              _isGreek ? 'Δοκίμασε ξανά' : 'Try again',
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => PropertyDetailsScreen(
+                              property: p,
+                              organizationId: p['organization_id'] as String?,
+                              organizationName: widget.organizationName ?? '',
+                              organizationApprovalStatus:
+                                  widget.organizationApprovalStatus ??
+                                  'pending_review',
+                              isGreek: _greek,
                             ),
                           ),
-                        ],
-                      ),
+                        );
+                        await _refresh();
+                      },
                     ),
-                  )
-                else if (properties.isEmpty)
-                  Card(
-                    elevation: 0,
-                    color: Theme.of(context)
-                        .colorScheme
-                        .surfaceContainerHighest,
-                    child: Padding(
-                      padding: const EdgeInsets.all(28),
-                      child: Column(
-                        children: [
-                          const Icon(
-                            Icons.home_work_outlined,
-                            size: 48,
-                            color: Color(0xFF176B87),
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            _isGreek
-                                ? 'Δεν υπάρχουν ακίνητα ακόμη'
-                                : 'No properties yet',
-                            style: Theme.of(context).textTheme.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.w700),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            _isGreek
-                                ? 'Πρόσθεσε το πρώτο ακίνητο σε αυτόν τον οργανισμό.'
-                                : 'Add the first property to this organization.',
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                else
-                  ...properties.map((property) {
-                    final location = [property['address'], property['city']]
-                        .whereType<String>()
-                        .where((part) => part.isNotEmpty)
-                        .join(', ');
-                    return Card(
-                      elevation: 0,
-                      margin: const EdgeInsets.only(bottom: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        side: BorderSide(
-                          color: Theme.of(context).colorScheme.outlineVariant,
-                        ),
-                      ),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 10,
-                        ),
-                        onTap: () async {
-                          final changed = await Navigator.of(context)
-                              .push<bool>(
-                                MaterialPageRoute<bool>(
-                                  builder: (_) => PropertyDetailsScreen(
-                                    property: property,
-                                    organizationId: widget.organizationId,
-                                    organizationName: widget.organizationName,
-                                    organizationApprovalStatus:
-                                        widget.organizationApprovalStatus,
-                                    isGreek: _isGreek,
-                                  ),
-                                ),
-                              );
-                          if (changed == true && mounted) await _refresh();
-                        },
-                        leading: const CircleAvatar(
-                          backgroundColor: Color(0x1F176B87),
-                          foregroundColor: Color(0xFF176B87),
-                          child: Icon(Icons.home_work_outlined),
-                        ),
-                        title: Text(
-                          property['name'] as String? ?? '',
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                        subtitle: Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Text(
-                            [
-                              _typeLabel(property['property_type'] as String?),
-                              if (location.isNotEmpty) location,
-                              _modelLabel(
-                                property['management_model'] as String?,
-                              ),
-                              _statusLabel(
-                                property['approval_status'] as String?,
-                              ),
-                            ].join(' · '),
-                          ),
-                        ),
-                        isThreeLine: true,
-                        trailing: const Icon(Icons.chevron_right),
-                      ),
-                    );
-                  }),
-              ],
-            );
-          },
-        ),
+                  ),
+                ),
+            ],
+          );
+        },
       ),
-    );
-  }
+    ),
+  );
 }

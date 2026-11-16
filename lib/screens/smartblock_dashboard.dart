@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'properties_screen.dart';
+import 'admin_review_screen.dart';
 
 class SmartBlockDashboard extends StatefulWidget {
   const SmartBlockDashboard({super.key});
@@ -278,6 +279,44 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
                     ?.copyWith(color: colorScheme.onSurfaceVariant),
               ),
               const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => PropertiesScreen(isGreek: _isGreek),
+                        ),
+                      ),
+                      icon: const Icon(Icons.home_work_outlined),
+                      label: Text(
+                        _isGreek ? 'Τα ακίνητά μου' : 'My properties',
+                      ),
+                    ),
+                  ),
+                  FutureBuilder<dynamic>(
+                    future: _client.rpc('is_smartblock_staff'),
+                    builder: (context, staff) => staff.data == true
+                        ? Padding(
+                            padding: const EdgeInsets.only(left: 10),
+                            child: OutlinedButton.icon(
+                              onPressed: () => Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) =>
+                                      AdminReviewScreen(isGreek: _isGreek),
+                                ),
+                              ),
+                              icon: const Icon(
+                                Icons.admin_panel_settings_outlined,
+                              ),
+                              label: Text(_isGreek ? 'Admin' : 'Admin'),
+                            ),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
               Row(
                 children: [
                   Expanded(
