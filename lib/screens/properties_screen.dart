@@ -7,12 +7,14 @@ class PropertiesScreen extends StatefulWidget {
   const PropertiesScreen({
     required this.organizationId,
     required this.organizationName,
+    required this.organizationApprovalStatus,
     required this.isGreek,
     super.key,
   });
 
   final String organizationId;
   final String organizationName;
+  final String organizationApprovalStatus;
   final bool isGreek;
 
   @override
@@ -380,14 +382,36 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  _isGreek
-                      ? 'Τα ακίνητα παραμένουν σε πρόχειρη κατάσταση μέχρι να εγκριθούν.'
-                      : 'Properties remain drafts until they are reviewed.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                if (organizationApprovalStatus == 'pending_review' ||
+                    organizationApprovalStatus == 'under_review' ||
+                    organizationApprovalStatus == 'changes_required')
+                  Card(
+                    elevation: 0,
+                    color: Theme.of(context).colorScheme.tertiaryContainer,
+                    child: ListTile(
+                      leading: const Icon(Icons.hourglass_top_rounded),
+                      title: Text(
+                        _isGreek
+                            ? 'Εκκρεμεί η έγκριση του οργανισμού'
+                            : 'Organization review is in progress',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      subtitle: Text(
+                        _isGreek
+                            ? 'Μπορείς να προετοιμάσεις ακίνητα τώρα. Θα αποθηκευτούν ως πρόχειρα μέχρι να ολοκληρωθεί ο έλεγχος.'
+                            : 'You can prepare property records now. They will remain drafts until the review is complete.',
+                      ),
+                    ),
+                  )
+                else
+                  Text(
+                    _isGreek
+                        ? 'Τα ακίνητα παραμένουν σε πρόχειρη κατάσταση μέχρι να εγκριθούν.'
+                        : 'Properties remain drafts until they are reviewed.',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
-                ),
                 const SizedBox(height: 24),
                 if (snapshot.connectionState == ConnectionState.waiting)
                   const Padding(

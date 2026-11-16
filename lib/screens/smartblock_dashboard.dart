@@ -342,6 +342,9 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
                     child: _OrganizationCard(
                       organizationId: organization['id'] as String,
                       name: organization['display_name'] as String? ?? '',
+                      approvalStatus:
+                          organization['approval_status'] as String? ??
+                          'unknown',
                       type: _organizationTypeLabel(
                         organization['organization_type'] as String?,
                       ),
@@ -409,6 +412,7 @@ class _OrganizationCard extends StatelessWidget {
   const _OrganizationCard({
     required this.organizationId,
     required this.name,
+    required this.approvalStatus,
     required this.type,
     required this.status,
     required this.isApproved,
@@ -417,6 +421,7 @@ class _OrganizationCard extends StatelessWidget {
 
   final String organizationId;
   final String name;
+  final String approvalStatus;
   final String type;
   final String status;
   final bool isApproved;
@@ -436,17 +441,16 @@ class _OrganizationCard extends StatelessWidget {
           horizontal: 16,
           vertical: 10,
         ),
-        onTap: isApproved
-            ? () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => PropertiesScreen(
-                    organizationId: organizationId,
-                    organizationName: name,
-                    isGreek: isGreek,
-                  ),
-                ),
-              )
-            : null,
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => PropertiesScreen(
+              organizationId: organizationId,
+              organizationName: name,
+              organizationApprovalStatus: approvalStatus,
+              isGreek: isGreek,
+            ),
+          ),
+        ),
         leading: CircleAvatar(
           backgroundColor: const Color(0xFF176B87).withValues(alpha: 0.12),
           foregroundColor: const Color(0xFF176B87),
@@ -466,10 +470,8 @@ class _OrganizationCard extends StatelessWidget {
                   : Icons.hourglass_top_rounded,
               color: isApproved ? colorScheme.primary : colorScheme.tertiary,
             ),
-            if (isApproved) ...[
-              const SizedBox(width: 8),
-              const Icon(Icons.chevron_right),
-            ],
+            const SizedBox(width: 8),
+            const Icon(Icons.chevron_right),
           ],
         ),
       ),
