@@ -382,9 +382,9 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                if (organizationApprovalStatus == 'pending_review' ||
-                    organizationApprovalStatus == 'under_review' ||
-                    organizationApprovalStatus == 'changes_required')
+                if (widget.organizationApprovalStatus == 'pending_review' ||
+                    widget.organizationApprovalStatus == 'under_review' ||
+                    widget.organizationApprovalStatus == 'changes_required')
                   Card(
                     elevation: 0,
                     color: Theme.of(context).colorScheme.tertiaryContainer,
