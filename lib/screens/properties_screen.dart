@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'property_owners_screen.dart';
+import 'property_details_screen.dart';
 
 class PropertiesScreen extends StatefulWidget {
   const PropertiesScreen({
@@ -498,16 +498,22 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
                           horizontal: 16,
                           vertical: 10,
                         ),
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => PropertyOwnersScreen(
-                              propertyId: property['id'] as String,
-                              propertyName: property['name'] as String? ?? '',
-                              organizationId: widget.organizationId,
-                              isGreek: _isGreek,
-                            ),
-                          ),
-                        ),
+                        onTap: () async {
+                          final changed = await Navigator.of(context)
+                              .push<bool>(
+                                MaterialPageRoute<bool>(
+                                  builder: (_) => PropertyDetailsScreen(
+                                    property: property,
+                                    organizationId: widget.organizationId,
+                                    organizationName: widget.organizationName,
+                                    organizationApprovalStatus:
+                                        widget.organizationApprovalStatus,
+                                    isGreek: _isGreek,
+                                  ),
+                                ),
+                              );
+                          if (changed == true && mounted) await _refresh();
+                        },
                         leading: const CircleAvatar(
                           backgroundColor: Color(0x1F176B87),
                           foregroundColor: Color(0xFF176B87),

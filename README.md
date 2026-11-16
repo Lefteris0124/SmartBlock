@@ -6,6 +6,7 @@
 - Greek and English interface.
 - Organization registration and approval status tracking.
 - Property registration and co-owner share tracking.
+- Property details and guarded submission for review after organization approval.
 - Database-enforced ownership share limits and row-level access policies.
 
 ## Run the Flutter app
@@ -31,4 +32,4 @@ The workflow in `.github/workflows/deploy-web.yml` builds and deploys the Web ap
 
 Use the publishable key for the client app. Do not use a secret or `service_role` key in Flutter.
 
-The organization, property, and co-owner database scripts are archived in `supabase/queries`. SB_092–SB_103 have been applied to the linked Supabase project. They are retained as reference SQL; do not rerun the table-creation scripts SB_092–SB_096.
+The organization, property, co-owner, and review workflow database scripts are archived in `supabase/queries`. SB_092–SB_104 have been applied to the linked Supabase project. They are retained as reference SQL; do not rerun the table-creation scripts SB_092–SB_096.
