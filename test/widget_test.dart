@@ -1,30 +1,33 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:smart_block/main.dart';
+import 'package:smart_block/main.dart' show LoginScreen;
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('login screen renders and switches language', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: LoginScreen()));
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    expect(find.text('SmartBlock'), findsOneWidget);
+    expect(find.text('Σύνδεση'), findsOneWidget);
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    await tester.tap(find.text('English'));
+    await tester.pumpAndSettle();
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('Sign in'), findsOneWidget);
+    expect(find.text('Building management, made simple.'), findsOneWidget);
+  });
+
+  testWidgets('login screen can open account creation', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: LoginScreen()));
+
+    await tester.tap(find.text('English'));
+    await tester.pumpAndSettle();
+
+    final createAccountLink = find.text('New to SmartBlock? Create an account');
+    await tester.ensureVisible(createAccountLink);
+    await tester.tap(createAccountLink);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Create account'), findsOneWidget);
+    expect(find.text('Already have an account? Sign in'), findsOneWidget);
   });
 }

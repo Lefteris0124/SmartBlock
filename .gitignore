@@ -51,6 +51,10 @@ app.*.map.json
 .env
 .env.*
 !.env.example
+supabase.environment.json
+android/key.properties
+android/app/*.jks
+android/app/*.keystore
 
 # Local IDE and machine settings
 .vscode/
