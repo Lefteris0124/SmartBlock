@@ -17,7 +17,7 @@ class PropertyModulesScreen extends StatefulWidget {
 class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     with SingleTickerProviderStateMixin {
   final db = Supabase.instance.client;
-  late final tabs = TabController(length: 3, vsync: this);
+  late final tabs = TabController(length: 4, vsync: this);
   bool busy = false;
   bool get gr => widget.isGreek;
   @override
@@ -331,6 +331,69 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     }
   }
 
+  Future<void> createNote() async {
+    final controller = TextEditingController();
+    final key = GlobalKey<FormState>();
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(gr ? 'Νέα σημείωση πολυκατοικίας' : 'New property note'),
+        content: Form(
+          key: key,
+          child: TextFormField(
+            controller: controller,
+            autofocus: true,
+            maxLines: 4,
+            maxLength: 500,
+            decoration: InputDecoration(
+              labelText: gr ? 'Σύντομη ενημέρωση' : 'Short update',
+              hintText: gr ? 'π.χ. Παρκάρω μπροστά στην είσοδο για 5 λεπτά' : 'e.g. Parking by the entrance for 5 minutes',
+            ),
+            validator: (value) => value == null || value.trim().isEmpty
+                ? (gr ? 'Γράψε ένα μήνυμα.' : 'Enter a message.')
+                : null,
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(gr ? 'Άκυρο' : 'Cancel')),
+          FilledButton(onPressed: () => key.currentState!.validate() ? Navigator.pop(ctx, true) : null, child: Text(gr ? 'Δημοσίευση' : 'Post')),
+        ],
+      ),
+    );
+    if (saved == true) {
+      try {
+        await db.from('property_notes').insert({'property_id': widget.propertyId, 'body': controller.text.trim(), 'created_by': db.auth.currentUser!.id});
+        await refresh();
+      } on PostgrestException catch (e) {
+        message(e.message);
+      }
+    }
+    controller.dispose();
+  }
+
+  Widget notesListing() => FutureBuilder<List<Map<String, dynamic>>>(
+    future: db.from('property_notes').select('id, body, created_at, created_by').eq('property_id', widget.propertyId).order('created_at', ascending: false).then((rows) => List<Map<String, dynamic>>.from(rows)),
+    builder: (context, snapshot) {
+      if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+      if (snapshot.hasError) return Center(child: Text(snapshot.error.toString()));
+      final notes = snapshot.data ?? [];
+      if (notes.isEmpty) return Center(child: Text(gr ? 'Δεν υπάρχουν ακόμη σημειώσεις.' : 'No notes yet.'));
+      return RefreshIndicator(
+        onRefresh: refresh,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: notes.map((note) {
+            return Card(child: ListTile(
+              leading: const Icon(Icons.chat_bubble_outline),
+              title: Text(note['body'] as String? ?? ''),
+              subtitle: Text('${gr ? 'Κάτοικος' : 'Resident'} · ${formatTimestamp(note['created_at'])}'),
+            ));
+          }).toList(),
+        ),
+      );
+    },
+  );
+
   Future<void> openVote(Map<String, dynamic> vote) async {
     final options = List<Map<String, dynamic>>.from(
       await db
@@ -507,6 +570,13 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     } on PostgrestException catch (e) {
       message(e.message);
     }
+  }
+
+  String formatTimestamp(dynamic value) {
+    final date = DateTime.tryParse(value?.toString() ?? '')?.toLocal();
+    if (date == null) return '';
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(date.day)}/${two(date.month)}/${date.year} ${two(date.hour)}:${two(date.minute)}';
   }
 
   String? required(String? v) =>
@@ -796,7 +866,8 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
         controller: tabs,
         tabs: [
           Tab(text: gr ? 'Ψηφοφορίες' : 'Votes'),
-          Tab(text: gr ? 'Κοινόχρηστα' : 'Charges'),
+          Tab(text: gr ? 'Ανακοινώσεις' : 'Notices'),
+          Tab(text: gr ? 'Οικονομικά' : 'Finances'),
           Tab(text: gr ? 'Ενοίκια' : 'Rent'),
         ],
       ),
@@ -804,18 +875,19 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     floatingActionButton: AnimatedBuilder(
       animation: tabs,
       builder: (context, _) => FloatingActionButton.extended(
-        onPressed: tabs.index == 0
-            ? createVote
-            : tabs.index == 1
-            ? createCharge
-            : createRent,
+        onPressed: switch (tabs.index) {
+          0 => createVote,
+          1 => createNote,
+          2 => createCharge,
+          _ => createRent,
+        },
         icon: const Icon(Icons.add),
         label: Text(gr ? 'Νέα καταχώριση' : 'Add record'),
       ),
     ),
     body: TabBarView(
       controller: tabs,
-      children: [voteListing(), chargeListing(), rentListing()],
+      children: [voteListing(), notesListing(), chargeListing(), rentListing()],
     ),
   );
 }

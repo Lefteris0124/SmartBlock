@@ -39,6 +39,7 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
   late Map<String, dynamic> _property;
   late bool _isGreek;
   late Future<_ReviewReadiness> _reviewReadinessFuture;
+  late Future<List<Map<String, dynamic>>> _ownersFuture;
   bool _isSubmitting = false;
 
   @override
@@ -47,7 +48,17 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
     _property = Map<String, dynamic>.from(widget.property);
     _isGreek = widget.isGreek;
     _reviewReadinessFuture = _loadReviewReadiness();
+    _ownersFuture = _loadOwners();
   }
+
+  Future<List<Map<String, dynamic>>> _loadOwners() async =>
+      List<Map<String, dynamic>>.from(
+        await _client
+            .from('property_owners')
+            .select('id, ownership_percentage, is_primary_representative, ownership_status, organizations(display_name, phone_e164, approval_status)')
+            .eq('property_id', _property['id'])
+            .order('created_at'),
+      );
 
   Future<_ReviewReadiness> _loadReviewReadiness() async {
     final rows = List<Map<String, dynamic>>.from(
@@ -197,6 +208,7 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
     } catch (_) {}
     if (mounted) {
       setState(() => _reviewReadinessFuture = _loadReviewReadiness());
+      setState(() => _ownersFuture = _loadOwners());
     }
   }
 
@@ -291,6 +303,48 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
                       : (_isGreek ? 'Συνδεδεμένος ιδιοκτήτης' : 'Owner linked'))
                 : widget.organizationName,
           ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _isGreek ? 'Ιδιοκτήτες' : 'Owners',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ),
+              IconButton(
+                tooltip: _isGreek ? 'Διαχείριση ιδιοκτητών' : 'Manage owners',
+                onPressed: _openOwners,
+                icon: const Icon(Icons.person_add_alt_1),
+              ),
+            ],
+          ),
+          FutureBuilder<List<Map<String, dynamic>>>(
+            future: _ownersFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()));
+              }
+              if (snapshot.hasError) return Card(child: ListTile(leading: const Icon(Icons.error_outline), title: Text(snapshot.error.toString())));
+              final owners = snapshot.data ?? const [];
+              if (owners.isEmpty) return Card(child: ListTile(leading: const Icon(Icons.person_outline), title: Text(_isGreek ? 'Δεν έχουν συνδεθεί ιδιοκτήτες ακόμη.' : 'No owners linked yet.')));
+              return Card(
+                child: Column(
+                  children: owners.map((owner) {
+                    final organization = owner['organizations'] as Map<String, dynamic>? ?? {};
+                    final phone = organization['phone_e164'] as String? ?? '';
+                    final percentage = (owner['ownership_percentage'] as num?)?.toDouble() ?? 0;
+                    final active = owner['ownership_status'] == 'active';
+                    return ListTile(
+                      leading: CircleAvatar(child: Icon(owner['is_primary_representative'] == true ? Icons.star_outline : Icons.person_outline)),
+                      title: Text(organization['display_name'] as String? ?? (_isGreek ? 'Ιδιοκτήτης' : 'Owner')),
+                      subtitle: Text([phone, '${percentage.toStringAsFixed(2)}%', if (!active) (owner['ownership_status'] as String? ?? '').replaceAll('_', ' ')].where((v) => v.isNotEmpty).join(' · ')),
+                    );
+                  }).toList(),
+                ),
+              );
+            },
+          ),
           const SizedBox(height: 20),
           OutlinedButton.icon(
             onPressed: _openOwners,
@@ -305,8 +359,8 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
             icon: const Icon(Icons.dashboard_customize_outlined),
             label: Text(
               _isGreek
-                  ? 'Ψηφοφορίες · Κοινόχρηστα · Ενοίκια'
-                  : 'Votes · Common charges · Rent',
+                  ? 'Ψηφοφορίες · Σημειώσεις · Οικονομικά'
+                  : 'Votes · Notes · Finances',
             ),
           ),
           if (isDraft) ...[

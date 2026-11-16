@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'property_details_screen.dart';
+import 'admin_review_screen.dart';
 
 class PropertiesScreen extends StatefulWidget {
   const PropertiesScreen({
@@ -46,8 +47,6 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
       );
     } else if (widget.organizationId != null) {
       query = query.eq('organization_id', widget.organizationId!);
-    } else if (userId != null) {
-      query = query.eq('created_by', userId);
     }
     final rows = await query.order('created_at', ascending: false);
     return List<Map<String, dynamic>>.from(rows);
@@ -259,6 +258,21 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
         IconButton(
           onPressed: () => setState(() => _greek = !_greek),
           icon: const Icon(Icons.language),
+        ),
+        FutureBuilder<dynamic>(
+          future: _client.rpc('is_smartblock_staff'),
+          builder: (context, snapshot) => snapshot.data == true
+              ? IconButton(
+                  tooltip: 'Admin',
+                  icon: const Icon(Icons.admin_panel_settings_outlined),
+                  onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => AdminReviewScreen(isGreek: _greek))),
+                )
+              : const SizedBox.shrink(),
+        ),
+        IconButton(
+          tooltip: _greek ? 'Αποσύνδεση' : 'Sign out',
+          onPressed: () async => _client.auth.signOut(),
+          icon: const Icon(Icons.logout),
         ),
       ],
     ),
