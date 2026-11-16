@@ -4,6 +4,16 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'property_owners_screen.dart';
 import 'property_modules_screen.dart';
 
+class _ReviewReadiness {
+  const _ReviewReadiness({
+    required this.activeShareTotal,
+    required this.primaryOwnerStatus,
+  });
+
+  final double activeShareTotal;
+  final String? primaryOwnerStatus;
+}
+
 class PropertyDetailsScreen extends StatefulWidget {
   const PropertyDetailsScreen({
     required this.property,
@@ -28,6 +38,7 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
   final SupabaseClient _client = Supabase.instance.client;
   late Map<String, dynamic> _property;
   late bool _isGreek;
+  late Future<_ReviewReadiness> _reviewReadinessFuture;
   bool _isSubmitting = false;
 
   @override
@@ -35,6 +46,39 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
     super.initState();
     _property = Map<String, dynamic>.from(widget.property);
     _isGreek = widget.isGreek;
+    _reviewReadinessFuture = _loadReviewReadiness();
+  }
+
+  Future<_ReviewReadiness> _loadReviewReadiness() async {
+    final rows = List<Map<String, dynamic>>.from(
+      await _client
+          .from('property_owners')
+          .select(
+            'ownership_percentage, is_primary_representative, organizations(approval_status)',
+          )
+          .eq('property_id', _property['id'])
+          .eq('ownership_status', 'active'),
+    );
+    final total = rows.fold<double>(
+      0,
+      (sum, row) =>
+          sum + ((row['ownership_percentage'] as num?)?.toDouble() ?? 0),
+    );
+    final primaryOwner = rows.where(
+      (row) => row['is_primary_representative'] == true,
+    );
+    if (primaryOwner.isEmpty) {
+      return _ReviewReadiness(
+        activeShareTotal: total,
+        primaryOwnerStatus: null,
+      );
+    }
+    final organization =
+        primaryOwner.first['organizations'] as Map<String, dynamic>? ?? {};
+    return _ReviewReadiness(
+      activeShareTotal: total,
+      primaryOwnerStatus: organization['approval_status'] as String?,
+    );
   }
 
   String _statusLabel(String? status) {
@@ -151,6 +195,9 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
       if (mounted)
         setState(() => _property['organization_id'] = row['organization_id']);
     } catch (_) {}
+    if (mounted) {
+      setState(() => _reviewReadinessFuture = _loadReviewReadiness());
+    }
   }
 
   Future<void> _openModules() async {
@@ -185,9 +232,7 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
       _property['country'],
     ].whereType<String>().where((part) => part.trim().isNotEmpty).join(', ');
     final status = _property['approval_status'] as String?;
-    final canSubmit =
-        _property['organization_id'] != null &&
-        (status == 'draft' || status == 'changes_required');
+    final isDraft = status == 'draft' || status == 'changes_required';
 
     return Scaffold(
       appBar: AppBar(
@@ -264,47 +309,97 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
                   : 'Votes · Common charges · Rent',
             ),
           ),
-          if (canSubmit) ...[
+          if (isDraft) ...[
             const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: _isSubmitting ? null : _submitForReview,
-              icon: _isSubmitting
-                  ? const SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.send_outlined),
-              label: Text(
-                _isGreek ? 'Υποβολή για έλεγχο' : 'Submit for review',
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _isGreek
-                  ? 'Πριν την υποβολή, τα ενεργά ποσοστά συνιδιοκτησίας πρέπει να αθροίζουν 100%.'
-                  : 'Active ownership shares must total 100% before submission.',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ] else if (status == 'draft' || status == 'changes_required') ...[
-            const SizedBox(height: 12),
-            Card(
-              color: Theme.of(context).colorScheme.tertiaryContainer,
-              child: ListTile(
-                leading: const Icon(Icons.hourglass_top_rounded),
-                title: Text(
-                  _isGreek
-                      ? 'Η υποβολή θα ενεργοποιηθεί μετά την έγκριση του οργανισμού.'
-                      : 'Review submission will be available after organization approval.',
-                ),
-              ),
+            FutureBuilder<_ReviewReadiness>(
+              future: _reviewReadinessFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(12),
+                      child: CircularProgressIndicator(),
+                    ),
+                  );
+                }
+                if (snapshot.hasError) {
+                  return _readinessCard(
+                    _isGreek
+                        ? 'Δεν ήταν δυνατός ο έλεγχος ιδιοκτητών. Δοκίμασε ξανά.'
+                        : 'Could not check the owners. Refresh and try again.',
+                  );
+                }
+                final readiness = snapshot.data!;
+                final reasons = <String>[];
+                if (readiness.primaryOwnerStatus == null) {
+                  reasons.add(
+                    _isGreek
+                        ? 'Πρόσθεσε κύριο ιδιοκτήτη με τηλέφωνο.'
+                        : 'Add a primary owner using their phone number.',
+                  );
+                } else if (readiness.primaryOwnerStatus != 'approved') {
+                  final status = readiness.primaryOwnerStatus!;
+                  final statusText = _isGreek
+                      ? switch (status) {
+                          'pending_review' => 'σε αναμονή ελέγχου',
+                          'under_review' => 'υπό εξέταση',
+                          'changes_required' => 'απαιτούνται αλλαγές',
+                          'rejected' => 'απορρίφθηκε',
+                          'suspended' => 'σε αναστολή',
+                          _ => status.replaceAll('_', ' '),
+                        }
+                      : status.replaceAll('_', ' ');
+                  reasons.add(
+                    _isGreek
+                        ? 'Ο οργανισμός του κύριου ιδιοκτήτη είναι «$statusText». Χρειάζεται έγκριση από το SmartBlock.'
+                        : 'The primary owner organization is "$statusText". SmartBlock approval is required.',
+                  );
+                }
+                if ((readiness.activeShareTotal - 100).abs() > 0.001) {
+                  reasons.add(
+                    _isGreek
+                        ? 'Τα ενεργά ποσοστά είναι ${readiness.activeShareTotal.toStringAsFixed(2)}%. Πρέπει να φτάσουν το 100%.'
+                        : 'Active ownership totals ${readiness.activeShareTotal.toStringAsFixed(2)}%. It must total 100%.',
+                  );
+                }
+                if (reasons.isNotEmpty) {
+                  return _readinessCard(reasons.join('\n'));
+                }
+                return FilledButton.icon(
+                  onPressed: _isSubmitting ? null : _submitForReview,
+                  icon: _isSubmitting
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.send_outlined),
+                  label: Text(
+                    _isGreek ? 'Υποβολή για έλεγχο' : 'Submit for review',
+                  ),
+                );
+              },
             ),
           ],
         ],
       ),
     );
   }
+
+  Widget _readinessCard(String message) => Card(
+    color: Theme.of(context).colorScheme.tertiaryContainer,
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.hourglass_top_rounded),
+          const SizedBox(width: 12),
+          Expanded(child: Text(message)),
+        ],
+      ),
+    ),
+  );
 }
