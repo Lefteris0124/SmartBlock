@@ -30,6 +30,73 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     if (mounted) setState(() {});
   }
 
+  Widget loadError() => Center(
+    child: Card(
+      margin: const EdgeInsets.all(24),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.cloud_off_outlined, size: 36),
+            const SizedBox(height: 10),
+            Text(
+              gr ? 'Δεν φορτώθηκαν τα στοιχεία' : 'Could not load this section',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              gr
+                  ? 'Έλεγξε τη σύνδεση και δοκίμασε ξανά.'
+                  : 'Check your connection and try again.',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: refresh,
+              icon: const Icon(Icons.refresh),
+              label: Text(gr ? 'Δοκιμή ξανά' : 'Try again'),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  Widget emptyState({
+    required IconData icon,
+    required String title,
+    required String description,
+    required String action,
+    required VoidCallback onPressed,
+  }) => Center(
+    child: SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 42, color: Theme.of(context).colorScheme.primary),
+              const SizedBox(height: 12),
+              Text(title, textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              Text(description, textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: onPressed,
+                icon: const Icon(Icons.add),
+                label: Text(action),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+
   Future<List<Map<String, dynamic>>> rows(String table) async =>
       List<Map<String, dynamic>>.from(
         await db
@@ -375,9 +442,15 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     future: db.from('property_notes').select('id, body, created_at, created_by').eq('property_id', widget.propertyId).order('created_at', ascending: false).then((rows) => List<Map<String, dynamic>>.from(rows)),
     builder: (context, snapshot) {
       if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-      if (snapshot.hasError) return Center(child: Text(snapshot.error.toString()));
+      if (snapshot.hasError) return loadError();
       final notes = snapshot.data ?? [];
-      if (notes.isEmpty) return Center(child: Text(gr ? 'Δεν υπάρχουν ακόμη σημειώσεις.' : 'No notes yet.'));
+      if (notes.isEmpty) return emptyState(
+        icon: Icons.chat_bubble_outline,
+        title: gr ? 'Δεν υπάρχουν σημειώσεις ακόμη' : 'No notices yet',
+        description: gr ? 'Χρησιμοποίησε τις σημειώσεις για σύντομες ενημερώσεις προς τους ενοίκους.' : 'Use notices for short updates to residents.',
+        action: gr ? 'Νέα σημείωση' : 'Write a notice',
+        onPressed: createNote,
+      );
       return RefreshIndicator(
         onRefresh: refresh,
         child: ListView(
@@ -592,13 +665,15 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
       builder: (ctx, s) {
         if (s.connectionState == ConnectionState.waiting)
           return const Center(child: CircularProgressIndicator());
-        if (s.hasError) return Center(child: Text(s.error.toString()));
+        if (s.hasError) return loadError();
         final items = s.data ?? [];
         if (items.isEmpty)
-          return Center(
-            child: Text(
-              gr ? 'Δεν υπάρχουν εγγραφές ακόμη.' : 'No records yet.',
-            ),
+          return emptyState(
+            icon: icon,
+            title: gr ? 'Δεν υπάρχουν εγγραφές ακόμη' : 'No records yet',
+            description: gr ? 'Πρόσθεσε την πρώτη καταχώριση σε αυτή την ενότητα.' : 'Add the first record to this section.',
+            action: gr ? 'Νέα καταχώριση' : 'Add record',
+            onPressed: () => tabs.index == 0 ? createVote() : createRent(),
           );
         return RefreshIndicator(
           onRefresh: refresh,
@@ -638,12 +713,15 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     builder: (context, snapshot) {
       if (snapshot.connectionState == ConnectionState.waiting)
         return const Center(child: CircularProgressIndicator());
-      if (snapshot.hasError)
-        return Center(child: Text(snapshot.error.toString()));
+      if (snapshot.hasError) return loadError();
       final votes = snapshot.data ?? [];
       if (votes.isEmpty)
-        return Center(
-          child: Text(gr ? 'Δεν υπάρχουν ψηφοφορίες.' : 'No votes yet.'),
+        return emptyState(
+          icon: Icons.how_to_vote_outlined,
+          title: gr ? 'Δεν υπάρχουν ψηφοφορίες ακόμη' : 'No votes yet',
+          description: gr ? 'Δημιούργησε μια ψηφοφορία για να αποφασίσουν οι ιδιοκτήτες.' : 'Create a vote so owners can decide together.',
+          action: gr ? 'Νέα ψηφοφορία' : 'Create a vote',
+          onPressed: createVote,
         );
       return ListView(
         padding: const EdgeInsets.all(16),
@@ -670,16 +748,15 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     builder: (context, snapshot) {
       if (snapshot.connectionState == ConnectionState.waiting)
         return const Center(child: CircularProgressIndicator());
-      if (snapshot.hasError)
-        return Center(child: Text(snapshot.error.toString()));
+      if (snapshot.hasError) return loadError();
       final runs = snapshot.data ?? [];
       if (runs.isEmpty)
-        return Center(
-          child: Text(
-            gr
-                ? 'Δεν υπάρχουν χρεώσεις κοινοχρήστων.'
-                : 'No common charges yet.',
-          ),
+        return emptyState(
+          icon: Icons.receipt_long_outlined,
+          title: gr ? 'Δεν υπάρχουν κοινόχρηστα ακόμη' : 'No shared charges yet',
+          description: gr ? 'Καταχώρισε την περίοδο και το συνολικό ποσό για να δημιουργηθεί η κατανομή.' : 'Add a period and total amount to create a charge run.',
+          action: gr ? 'Νέα χρέωση' : 'Add a charge',
+          onPressed: createCharge,
         );
       return ListView(
         padding: const EdgeInsets.all(16),
@@ -827,14 +904,15 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     builder: (context, snapshot) {
       if (snapshot.connectionState == ConnectionState.waiting)
         return const Center(child: CircularProgressIndicator());
-      if (snapshot.hasError)
-        return Center(child: Text(snapshot.error.toString()));
+      if (snapshot.hasError) return loadError();
       final contracts = snapshot.data ?? [];
       if (contracts.isEmpty)
-        return Center(
-          child: Text(
-            gr ? 'Δεν υπάρχουν μισθώσεις.' : 'No rental contracts yet.',
-          ),
+        return emptyState(
+          icon: Icons.key_outlined,
+          title: gr ? 'Δεν υπάρχουν μισθώσεις ακόμη' : 'No rental contracts yet',
+          description: gr ? 'Πρόσθεσε μίσθωση για να παρακολουθείς ενοίκια και πληρωμές.' : 'Add a rental to track rent and payments.',
+          action: gr ? 'Νέα μίσθωση' : 'Add a rental',
+          onPressed: createRent,
         );
       return ListView(
         padding: const EdgeInsets.all(16),
@@ -882,7 +960,12 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
           _ => createRent,
         },
         icon: const Icon(Icons.add),
-        label: Text(gr ? 'Νέα καταχώριση' : 'Add record'),
+        label: Text(switch (tabs.index) {
+          0 => gr ? 'Νέα ψηφοφορία' : 'New vote',
+          1 => gr ? 'Νέα σημείωση' : 'New notice',
+          2 => gr ? 'Νέα χρέωση' : 'New charge',
+          _ => gr ? 'Νέα μίσθωση' : 'New rental',
+        }),
       ),
     ),
     body: TabBarView(
@@ -891,3 +974,4 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     ),
   );
 }
+
