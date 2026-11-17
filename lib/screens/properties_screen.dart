@@ -305,7 +305,7 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
           future: _client.rpc('is_smartblock_staff'),
           builder: (context, snapshot) => snapshot.data == true
               ? IconButton(
-                  tooltip: 'Admin',
+                  tooltip: _greek ? 'Κέντρο διαχείρισης' : 'Admin control center',
                   icon: const Icon(Icons.admin_panel_settings_outlined),
                   onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => AdminReviewScreen(isGreek: _greek))),
                 )
@@ -464,4 +464,5 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
     ),
   );
 }
+
 

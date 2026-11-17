@@ -21,11 +21,54 @@ class _PropertyOwnersScreenState extends State<PropertyOwnersScreen> {
   final _db = Supabase.instance.client;
   late Future<List<Map<String, dynamic>>> _future;
   late bool _greek;
+  bool _isAdmin = false;
   @override
   void initState() {
     super.initState();
     _greek = widget.isGreek;
     _future = _load();
+    _loadAdminAccess();
+  }
+
+  Future<void> _loadAdminAccess() async {
+    try {
+      final value = await _db.rpc('is_smartblock_admin');
+      if (mounted) setState(() => _isAdmin = value == true);
+    } catch (_) {}
+  }
+
+  Future<void> _manageOwner(Map<String, dynamic> owner, String action) async {
+    if (action == 'delete') {
+      final yes = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+        title: Text(_greek ? 'Αφαίρεση ιδιοκτήτη;' : 'Remove owner?'),
+        content: Text(_greek ? 'Θα αφαιρεθεί η σύνδεση ιδιοκτησίας από αυτό το ακίνητο. Αν υπάρχουν οικονομικές εγγραφές, ίσως χρειαστεί να αφαιρεθούν πρώτα.' : 'This removes the ownership link for this property. Related finance entries may need to be removed first.'),
+        actions: [TextButton(onPressed:()=>Navigator.pop(ctx,false),child:Text(_greek?'Άκυρο':'Cancel')),FilledButton.tonal(onPressed:()=>Navigator.pop(ctx,true),child:Text(_greek?'Αφαίρεση':'Remove'))],
+      )) == true;
+      if (!yes) return;
+      try {
+        await _db.from('property_owners').delete().eq('id', owner['id']);
+        await _refresh();
+      } on PostgrestException catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+      return;
+    }
+
+    final share = TextEditingController(text: '${owner['ownership_percentage']}');
+    final form = GlobalKey<FormState>();
+    var status = owner['ownership_status'] as String? ?? 'active';
+    var primary = owner['is_primary_representative'] == true;
+    final save = await showDialog<bool>(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx,setDialog)=>AlertDialog(
+      title: Text(_greek ? 'Επεξεργασία ιδιοκτησίας' : 'Edit ownership'),
+      content: Form(key:form,child:Column(mainAxisSize:MainAxisSize.min,children:[
+        TextFormField(controller:share,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:InputDecoration(labelText:_greek?'Ποσοστό':'Ownership share',suffixText:'%'),validator:(v){final n=double.tryParse((v??'').replaceAll(',','.'));return n==null||n<=0||n>100?(_greek?'Βάλε ποσοστό από 0 έως 100.':'Enter a share from 0 to 100.'):null;}),
+        DropdownButtonFormField<String>(value:status,decoration:InputDecoration(labelText:_greek?'Κατάσταση':'Status'),items:['active','transferred','inactive'].map((s)=>DropdownMenuItem(value:s,child:Text(switch(s){'active'=>_greek?'Ενεργή':'Active','transferred'=>_greek?'Μεταβιβάστηκε':'Transferred',_=>_greek?'Ανενεργή':'Inactive'}))).toList(),onChanged:(v){if(v!=null)setDialog(()=>status=v);}),
+        SwitchListTile(title:Text(_greek?'Κύριος εκπρόσωπος':'Primary representative'),value:primary,onChanged:(v)=>setDialog(()=>primary=v)),
+      ])),
+      actions:[TextButton(onPressed:()=>Navigator.pop(ctx,false),child:Text(_greek?'Άκυρο':'Cancel')),FilledButton(onPressed:()=>form.currentState!.validate()?Navigator.pop(ctx,true):null,child:Text(_greek?'Αποθήκευση':'Save'))],
+    )));
+    if(save==true){try{await _db.from('property_owners').update({'ownership_percentage':double.parse(share.text.replaceAll(',','.')),'ownership_status':status,'is_primary_representative':primary,'updated_at':DateTime.now().toUtc().toIso8601String()}).eq('id',owner['id']);await _refresh();}on PostgrestException catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(e.message)));}}
+    share.dispose();
   }
 
   Future<List<Map<String, dynamic>>> _load() async =>
@@ -318,11 +361,19 @@ class _PropertyOwnersScreenState extends State<PropertyOwnersScreen> {
                     ),
                     title: Text(org['display_name'] as String? ?? ''),
                     subtitle: Text(
-                      '${org['phone_e164'] ?? ''} · ${o['ownership_percentage']}% · ${o['ownership_status']}',
+                      '${org['phone_e164'] ?? ''} · ${o['ownership_percentage']}% · ${switch(o['ownership_status']) {'active'=>_greek?'Ενεργός':'Active','transferred'=>_greek?'Μεταβιβάστηκε':'Transferred',_=>_greek?'Ανενεργός':'Inactive'}}',
                     ),
-                    trailing: org['approval_status'] == 'approved'
-                        ? const Icon(Icons.verified_outlined)
-                        : const Icon(Icons.hourglass_top),
+                    trailing: _isAdmin
+                        ? PopupMenuButton<String>(
+                            onSelected:(action)=>_manageOwner(o,action),
+                            itemBuilder:(ctx)=>[
+                              PopupMenuItem(value:'edit',child:Text(_greek?'Επεξεργασία':'Edit')),
+                              PopupMenuItem(value:'delete',child:Text(_greek?'Αφαίρεση':'Remove')),
+                            ],
+                          )
+                        : (org['approval_status'] == 'approved'
+                            ? const Icon(Icons.verified_outlined)
+                            : const Icon(Icons.hourglass_top)),
                   ),
                 );
               }),
@@ -333,3 +384,4 @@ class _PropertyOwnersScreenState extends State<PropertyOwnersScreen> {
     ),
   );
 }
+
