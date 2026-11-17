@@ -58,7 +58,7 @@ class _AdminReviewScreenState extends State<AdminReviewScreen>
         await db
             .from('properties')
             .select(
-              'id, name, property_type, other_description, address, city, country, management_model, approval_status, organization_id, created_by, organizations(display_name, approval_status)',
+              'id, name, property_type, other_description, apartment_id, address, city, country, management_model, approval_status, organization_id, created_by, organizations(display_name, approval_status)',
             )
             .order('created_at', ascending: false),
       );
@@ -250,7 +250,7 @@ class _AdminReviewScreenState extends State<AdminReviewScreen>
           content: SizedBox(width: 440, child: Form(
             key: form,
             child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-              DropdownButtonFormField<String>(value: kind, decoration: InputDecoration(labelText: gr ? 'Τύπος ακινήτου' : 'Property type'), items: [
+              DropdownButtonFormField<String>(value: kind, decoration: InputDecoration(labelText: gr ? 'Τύπος ακινήτου' : 'Property type'), items: current['apartment_id'] != null ? [DropdownMenuItem(value:'apartment',child:Text(gr?'Διαμέρισμα':'Apartment'))] : [
                 ['apartment',gr?'Διαμέρισμα':'Apartment'],['building',gr?'Πολυκατοικία':'Apartment building'],['house',gr?'Κατοικία':'House'],['shop',gr?'Κατάστημα':'Shop'],['office',gr?'Γραφείο':'Office'],['warehouse',gr?'Αποθήκη':'Warehouse'],['land',gr?'Οικόπεδο':'Land'],['other',gr?'Άλλο':'Other']
               ].map((x)=>DropdownMenuItem(value:x[0],child:Text(x[1]))).toList(), onChanged:(v){if(v!=null)setDialog(()=>kind=v);}),
               if (kind == 'other') TextFormField(controller: other, decoration: InputDecoration(labelText: gr ? 'Προσδιορισμός άλλου τύπου' : 'Specify other type'), validator:(v)=>(v??'').trim().isEmpty?(gr?'Συμπλήρωσε τον τύπο.':'Specify the type.'):null),
@@ -500,4 +500,5 @@ class _AdminReviewScreenState extends State<AdminReviewScreen>
     ]),
   );
 }
+
 
