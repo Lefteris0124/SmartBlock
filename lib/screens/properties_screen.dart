@@ -244,6 +244,48 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
   String? _required(String? value) => value == null || value.trim().isEmpty
       ? (_greek ? 'Υποχρεωτικό πεδίο.' : 'Required field.')
       : null;
+
+  String _propertyTypeLabel(String? type, String? otherDescription) {
+    if (type == 'other' && (otherDescription ?? '').trim().isNotEmpty) {
+      return otherDescription!.trim();
+    }
+    const greek = {
+      'apartment': 'Διαμέρισμα',
+      'building': 'Πολυκατοικία',
+      'house': 'Κατοικία',
+      'shop': 'Κατάστημα',
+      'office': 'Γραφείο',
+      'warehouse': 'Αποθήκη',
+      'land': 'Οικόπεδο',
+      'other': 'Άλλο ακίνητο',
+    };
+    const english = {
+      'apartment': 'Apartment',
+      'building': 'Apartment building',
+      'house': 'House',
+      'shop': 'Shop',
+      'office': 'Office',
+      'warehouse': 'Warehouse',
+      'land': 'Land',
+      'other': 'Other property',
+    };
+    return (_greek ? greek : english)[type] ?? (type ?? '');
+  }
+
+  String _approvalLabel(String? status) {
+    if (!_greek) return (status ?? 'unknown').replaceAll('_', ' ');
+    const labels = {
+      'draft': 'Πρόχειρο',
+      'pending_review': 'Σε αναμονή ελέγχου',
+      'under_review': 'Υπό έλεγχο',
+      'changes_required': 'Χρειάζονται αλλαγές',
+      'approved': 'Εγκεκριμένο',
+      'rejected': 'Απορρίφθηκε',
+      'suspended': 'Σε αναστολή',
+    };
+    return labels[status] ?? 'Άγνωστη κατάσταση';
+  }
+
   DropdownMenuItem<String> _option(String value, String label) =>
       DropdownMenuItem(value: value, child: Text(label));
 
@@ -299,8 +341,8 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
               const SizedBox(height: 8),
               Text(
                 _greek
-                    ? 'Δημιούργησε πρώτα το ακίνητο και σύνδεσε μετά τους ιδιοκτήτες με τον αριθμό τηλεφώνου τους.'
-                    : 'Create the property first, then link its owners by phone number.',
+                    ? 'Άνοιξε ένα ακίνητο για να δεις τους ιδιοκτήτες, τις ψηφοφορίες, τις ανακοινώσεις και τα οικονομικά του.'
+                    : 'Open a property to see its owners, votes, notices and finances.',
               ),
               const SizedBox(height: 20),
               if (snapshot.connectionState == ConnectionState.waiting)
@@ -311,29 +353,84 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
                   ),
                 )
               else if (snapshot.hasError)
-                Text(snapshot.error.toString())
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.cloud_off_outlined),
+                    title: Text(
+                      _greek
+                          ? 'Δεν φορτώθηκαν τα ακίνητα'
+                          : 'Properties could not be loaded',
+                    ),
+                    subtitle: Text(
+                      _greek
+                          ? 'Έλεγξε τη σύνδεση και δοκίμασε ξανά.'
+                          : 'Check your connection and try again.',
+                    ),
+                    trailing: IconButton(
+                      tooltip: _greek ? 'Δοκιμή ξανά' : 'Try again',
+                      onPressed: _refresh,
+                      icon: const Icon(Icons.refresh),
+                    ),
+                  ),
+                )
               else if (properties.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.all(28),
-                  child: Text(
-                    _greek
-                        ? 'Δεν υπάρχουν ακίνητα ακόμη.'
-                        : 'No properties yet.',
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      children: [
+                        const Icon(
+                          Icons.apartment_outlined,
+                          size: 42,
+                          color: Color(0xFF176B87),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          _greek
+                              ? 'Ξεκίνα με το πρώτο σου ακίνητο'
+                              : 'Start with your first property',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _greek
+                              ? 'Πρόσθεσε διαμέρισμα ή πολυκατοικία. Έπειτα θα καταχωρίσεις τους ιδιοκτήτες μέσα στο ακίνητο.'
+                              : 'Add an apartment or building. You can add its owners from the property page.',
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 16),
+                        FilledButton.icon(
+                          onPressed: _createProperty,
+                          icon: const Icon(Icons.add_home_work_outlined),
+                          label: Text(
+                            _greek ? 'Προσθήκη ακινήτου' : 'Add property',
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 )
               else
                 ...properties.map(
                   (p) => Card(
                     child: ListTile(
+                      leading: const CircleAvatar(
+                        child: Icon(Icons.apartment_outlined),
+                      ),
                       title: Text(p['name'] as String? ?? ''),
                       subtitle: Text(
                         [
-                              p['property_type'] == 'other'
-                                  ? p['other_description']
-                                  : p['property_type'],
+                              _propertyTypeLabel(
+                                p['property_type'] as String?,
+                                p['other_description'] as String?,
+                              ),
                               p['address'],
                               p['city'],
-                              p['approval_status'],
+                              _approvalLabel(p['approval_status'] as String?),
                             ]
                             .whereType<String>()
                             .where((s) => s.isNotEmpty)
@@ -367,3 +464,4 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
     ),
   );
 }
+
