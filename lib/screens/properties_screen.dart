@@ -38,7 +38,7 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
     var query = _client
         .from('properties')
         .select(
-          'id, name, property_type, other_description, address, city, country, management_model, approval_status, organization_id, created_by',
+          'id, name, property_type, other_description, total_apartments, address, city, country, management_model, approval_status, organization_id, created_by',
         );
     final userId = _client.auth.currentUser?.id;
     if (widget.organizationId != null && userId != null) {
@@ -65,6 +65,7 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
     final address = TextEditingController();
     final city = TextEditingController();
     final other = TextEditingController();
+    final apartments = TextEditingController();
     final form = GlobalKey<FormState>();
     var type = 'apartment';
     var model = 'self_service';
@@ -109,6 +110,20 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
                               if (v != null) setDialog(() => type = v);
                             },
                     ),
+                    if (type == 'building') ...[
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: apartments,
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          labelText: _greek ? 'Συνολικά διαμερίσματα' : 'Total apartments',
+                        ),
+                        validator: (v) => type != 'building' ? null :
+                            (int.tryParse((v ?? '').trim()) ?? 0) < 1
+                                ? (_greek ? 'Βάλε τον αριθμό διαμερισμάτων.' : 'Enter the apartment count.')
+                                : null,
+                      ),
+                    ],
                     if (type == 'other') ...[
                       const SizedBox(height: 12),
                       TextFormField(
@@ -201,7 +216,7 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
                       setDialog(() => saving = true);
                       try {
                         final id = await _client.rpc(
-                          'create_property_draft',
+                          'create_property_draft_with_units',
                           params: {
                             'p_name': name.text.trim(),
                             'p_property_type': type,
@@ -211,6 +226,9 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
                             'p_management_model': model,
                             'p_other_description': type == 'other'
                                 ? other.text.trim()
+                                : null,
+                            'p_total_apartments': type == 'building'
+                                ? int.parse(apartments.text.trim())
                                 : null,
                           },
                         );
@@ -238,6 +256,7 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
     address.dispose();
     city.dispose();
     other.dispose();
+    apartments.dispose();
     if (saved == true && mounted) await _refresh();
   }
 
@@ -430,6 +449,7 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
                               ),
                               p['address'],
                               p['city'],
+                              (p['total_apartments'] == null ? null : '${p['total_apartments']} ${_greek ? 'διαμερίσματα' : 'apartments'}'),
                               _approvalLabel(p['approval_status'] as String?),
                             ]
                             .whereType<String>()
@@ -464,5 +484,6 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
     ),
   );
 }
+
 
 

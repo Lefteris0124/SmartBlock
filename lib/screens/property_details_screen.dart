@@ -8,10 +8,14 @@ class _ReviewReadiness {
   const _ReviewReadiness({
     required this.activeShareTotal,
     required this.primaryOwnerStatus,
+    required this.declarationsComplete,
+    required this.apartmentCountsMatch,
   });
 
   final double activeShareTotal;
   final String? primaryOwnerStatus;
+  final bool declarationsComplete;
+  final bool apartmentCountsMatch;
 }
 
 class PropertyDetailsScreen extends StatefulWidget {
@@ -55,7 +59,7 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
       List<Map<String, dynamic>>.from(
         await _client
             .from('property_owners')
-            .select('id, ownership_percentage, is_primary_representative, ownership_status, organizations(display_name, phone_e164, approval_status)')
+            .select('id, ownership_percentage, apartment_count, area_sqm, title_deed_photo_path, area_declaration_confirmed_at, is_primary_representative, ownership_status, organizations(display_name, phone_e164, approval_status)')
             .eq('property_id', _property['id'])
             .order('created_at'),
       );
@@ -65,7 +69,7 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
       await _client
           .from('property_owners')
           .select(
-            'ownership_percentage, is_primary_representative, organizations(approval_status)',
+            'ownership_percentage, apartment_count, area_sqm, title_deed_photo_path, area_declaration_confirmed_at, is_primary_representative, organizations(approval_status)',
           )
           .eq('property_id', _property['id'])
           .eq('ownership_status', 'active'),
@@ -75,6 +79,14 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
       (sum, row) =>
           sum + ((row['ownership_percentage'] as num?)?.toDouble() ?? 0),
     );
+    final incomplete = rows.isEmpty || rows.any((row) =>
+        row['apartment_count'] == null || row['area_sqm'] == null ||
+        row['title_deed_photo_path'] == null || row['area_declaration_confirmed_at'] == null);
+    final declaredApartments = rows.fold<int>(0, (sum, row) =>
+        sum + ((row['apartment_count'] as num?)?.toInt() ?? 0));
+    final expectedApartments = (_property['total_apartments'] as num?)?.toInt();
+    final apartmentCountsMatch = expectedApartments == null ||
+        declaredApartments == expectedApartments;
     final primaryOwner = rows.where(
       (row) => row['is_primary_representative'] == true,
     );
@@ -82,6 +94,8 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
       return _ReviewReadiness(
         activeShareTotal: total,
         primaryOwnerStatus: null,
+        declarationsComplete: !incomplete,
+        apartmentCountsMatch: apartmentCountsMatch,
       );
     }
     final organization =
@@ -89,6 +103,8 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
     return _ReviewReadiness(
       activeShareTotal: total,
       primaryOwnerStatus: organization['approval_status'] as String?,
+      declarationsComplete: !incomplete,
+      apartmentCountsMatch: apartmentCountsMatch,
     );
   }
 
@@ -327,6 +343,11 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
               }
               if (snapshot.hasError) return Card(child: ListTile(leading: const Icon(Icons.error_outline), title: Text(snapshot.error.toString())));
               final owners = snapshot.data ?? const [];
+              final activeOwners = owners.where((owner) => owner['ownership_status'] == 'active').toList();
+              final allAreasDeclared = activeOwners.isNotEmpty && activeOwners.every((owner) => owner['area_sqm'] != null && owner['title_deed_photo_path'] != null && owner['area_declaration_confirmed_at'] != null);
+              final declaredApartmentCount = activeOwners.fold<int>(0, (sum, owner) => sum + ((owner['apartment_count'] as num?)?.toInt() ?? 0));
+              final expectedApartmentCount = (_property['total_apartments'] as num?)?.toInt();
+              final shareIsReady = allAreasDeclared && (expectedApartmentCount == null || expectedApartmentCount == declaredApartmentCount);
               if (owners.isEmpty) return Card(child: ListTile(leading: const Icon(Icons.person_outline), title: Text(_isGreek ? 'Δεν έχουν συνδεθεί ιδιοκτήτες ακόμη.' : 'No owners linked yet.')));
               return Card(
                 child: Column(
@@ -338,7 +359,7 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
                     return ListTile(
                       leading: CircleAvatar(child: Icon(owner['is_primary_representative'] == true ? Icons.star_outline : Icons.person_outline)),
                       title: Text(organization['display_name'] as String? ?? (_isGreek ? 'Ιδιοκτήτης' : 'Owner')),
-                      subtitle: Text([phone, '${percentage.toStringAsFixed(2)}%', if (!active) (owner['ownership_status'] as String? ?? '').replaceAll('_', ' ')].where((v) => v.isNotEmpty).join(' · ')),
+                      subtitle: Text([phone, if (owner['area_sqm'] != null) '${owner['area_sqm']} m²', if (active && shareIsReady) '${percentage.toStringAsFixed(2)}%' else if (active) (_isGreek ? 'ποσοστό σε εκκρεμότητα' : 'share pending'), if (!active) (owner['ownership_status'] as String? ?? '').replaceAll('_', ' ')].where((v) => v.isNotEmpty).join(' · ')),
                     );
                   }).toList(),
                 ),
@@ -416,6 +437,16 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
                         : 'Active ownership totals ${readiness.activeShareTotal.toStringAsFixed(2)}%. It must total 100%.',
                   );
                 }
+                if (!readiness.declarationsComplete) {
+                  reasons.add(_isGreek
+                      ? 'Κάθε ιδιοκτήτης πρέπει να δηλώσει διαμερίσματα και τετραγωνικά, να ανεβάσει φωτογραφία τίτλου και να επιβεβαιώσει τα στοιχεία.'
+                      : 'Every owner must declare apartments and area, upload a title deed photo, and confirm the information.');
+                }
+                if (!readiness.apartmentCountsMatch) {
+                  reasons.add(_isGreek
+                      ? 'Το άθροισμα διαμερισμάτων των ιδιοκτητών πρέπει να συμφωνεί με το σύνολο της πολυκατοικίας.'
+                      : 'The owners’ apartment counts must match the building total.');
+                }
                 if (reasons.isNotEmpty) {
                   return _readinessCard(reasons.join('\n'));
                 }
@@ -457,3 +488,4 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
     ),
   );
 }
+
