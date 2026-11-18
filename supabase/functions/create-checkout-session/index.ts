@@ -106,6 +106,10 @@ Deno.serve(async (request) => {
     const checkout = await stripe.checkout.sessions.create({
       mode: 'payment',
       integration_identifier: 'smartblock_property_payments_web_v1',
+      // SmartBlock is collecting property rent and shared expenses, not selling
+      // digital goods. Stripe Managed Payments requires eligible digital-product
+      // tax codes, so explicitly keep these Checkout Sessions on standard Payments.
+      managed_payments: { enabled: false },
       line_items: [{
         price_data: {
           currency: 'eur',
@@ -151,4 +155,3 @@ Deno.serve(async (request) => {
     return json({ error: 'Could not start checkout. Please try again.' }, 502, origin)
   }
 })
-
