@@ -40,19 +40,21 @@ class _PropertyOwnersScreenState extends State<PropertyOwnersScreen> {
 
   Future<void> _loadAccess() async {
     try {
-      final values = await Future.wait([
-        _db.rpc('is_smartblock_admin'),
-        _db.rpc('my_manageable_organization_ids'),
-        _db.from('properties').select('created_by, total_apartments').eq('id', widget.propertyId).maybeSingle(),
-      ]);
+      final isAdmin = await _db.rpc('is_smartblock_admin');
+      final manageableOrganizations = await _db.rpc('my_manageable_organization_ids');
+      final property = await _db
+          .from('properties')
+          .select('created_by, total_apartments')
+          .eq('id', widget.propertyId)
+          .maybeSingle();
       if (mounted) {
         setState(() {
-          _isAdmin = values[0] == true;
-          _manageableOrganizations = (values[1] as List)
+          _isAdmin = isAdmin == true;
+          _manageableOrganizations = (manageableOrganizations as List)
               .map((v) => v.toString())
               .toSet();
-          _isPropertyCreator = values[2]?['created_by'] == _db.auth.currentUser?.id;
-          _totalApartments = values[2]?['total_apartments'] as int?;
+          _isPropertyCreator = property?['created_by'] == _db.auth.currentUser?.id;
+          _totalApartments = (property?['total_apartments'] as num?)?.toInt();
         });
       }
     } catch (_) {}
@@ -315,7 +317,7 @@ class _PropertyOwnersScreenState extends State<PropertyOwnersScreen> {
           const SizedBox(height: 10),
           OutlinedButton.icon(onPressed: saving ? null : () async { final picked = await _pickDeed(); if (picked != null) setDialog(() => photo = picked); }, icon: Icon(photo == null ? Icons.add_a_photo_outlined : Icons.check_circle), label: Text(photo?.name ?? (_greek ? 'Νέα φωτογραφία τίτλου' : 'New title deed photo'))),
           CheckboxListTile(contentPadding: EdgeInsets.zero, value: confirmed, onChanged: (v) => setDialog(() => confirmed = v ?? false), title: Text(_greek ? 'Επιβεβαιώνω τα τετραγωνικά βάσει τίτλου' : 'I confirm the area matches the title deed')),
-        ]))),
+        ])))),
         actions: [
           TextButton(onPressed: saving ? null : () => Navigator.pop(ctx, false), child: Text(_greek ? 'Άκυρο' : 'Cancel')),
           FilledButton(onPressed: saving ? null : () async {
