@@ -1,5 +1,9 @@
+Warning: truncated output (original token count: 17214)
+Total output lines: 1858
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class PropertyModulesScreen extends StatefulWidget {
   const PropertyModulesScreen({
@@ -862,240 +866,13 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
           'p_currency': 'EUR',
           'p_start_date': start.text.trim(),
           'p_end_date': end.text.trim().isEmpty ? null : end.text.trim(),
-          'p_due_day': 1,
-        },
-      );
-      await refresh();
-      if (mounted) message(gr ? 'Η μίσθωση καταχωρίστηκε.' : 'Rental added.');
-    } on PostgrestException catch (e) {
-      message(e.message);
-    } catch (e) {
-      message('$e');
-    } finally {
-      unit.dispose();
-      tenant.dispose();
-      phone.dispose();
-      amount.dispose();
-      start.dispose();
-      end.dispose();
-    }
-  }
-
-  Future<void> createNote() async {
-    final controller = TextEditingController();
-    final key = GlobalKey<FormState>();
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(gr ? 'Νέα σημείωση πολυκατοικίας' : 'New property note'),
-        content: Form(
-          key: key,
-          child: TextFormField(
-            controller: controller,
-            autofocus: true,
-            maxLines: 4,
-            maxLength: 500,
-            decoration: InputDecoration(
-              labelText: gr ? 'Σύντομη ενημέρωση' : 'Short update',
-              hintText: gr
-                  ? 'π.χ. Παρκάρω μπροστά στην είσοδο για 5 λεπτά'
-                  : 'e.g. Parking by the entrance for 5 minutes',
-            ),
-            validator: (value) => value == null || value.trim().isEmpty
-                ? (gr ? 'Γράψε ένα μήνυμα.' : 'Enter a message.')
-                : null,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(gr ? 'Άκυρο' : 'Cancel'),
-          ),
-          FilledButton(
-            onPressed: () =>
-                key.currentState!.validate() ? Navigator.pop(ctx, true) : null,
-            child: Text(gr ? 'Δημοσίευση' : 'Post'),
-          ),
-        ],
-      ),
-    );
-    if (saved == true) {
-      try {
-        await db.from('property_notes').insert({
-          'property_id': widget.propertyId,
-          'body': controller.text.trim(),
-          'created_by': db.auth.currentUser!.id,
-        });
-        await refresh();
-      } on PostgrestException catch (e) {
-        message(e.message);
-      }
-    }
-    controller.dispose();
-  }
-
-  Widget notesListing() => FutureBuilder<List<Map<String, dynamic>>>(
-    future: db
-        .from('property_notes')
-        .select('id, body, created_at, created_by')
-        .eq('property_id', widget.propertyId)
-        .order('created_at', ascending: false)
-        .then((rows) => List<Map<String, dynamic>>.from(rows)),
-    builder: (context, snapshot) {
-      if (snapshot.connectionState == ConnectionState.waiting)
-        return const Center(child: CircularProgressIndicator());
-      if (snapshot.hasError) return loadError();
-      final notes = snapshot.data ?? [];
-      if (notes.isEmpty)
-        return emptyState(
-          icon: Icons.chat_bubble_outline,
-          title: gr ? 'Δεν υπάρχουν σημειώσεις ακόμη' : 'No notices yet',
-          description: gr
-              ? 'Χρησιμοποίησε τις σημειώσεις για σύντομες ενημερώσεις προς τους ενοίκους.'
-              : 'Use notices for short updates to residents.',
-          action: gr ? 'Νέα σημείωση' : 'Write a notice',
-          onPressed: createNote,
-        );
-      return RefreshIndicator(
-        onRefresh: refresh,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: notes.map((note) {
-            return Card(
-              child: ListTile(
-                leading: const Icon(Icons.chat_bubble_outline),
-                title: Text(note['body'] as String? ?? ''),
-                subtitle: Text(
-                  '${gr ? 'Κάτοικος' : 'Resident'} · ${formatTimestamp(note['created_at'])}',
-                ),
-                trailing: isAdmin
-                    ? PopupMenuButton<String>(
-                        onSelected: (action) {
-                          if (action == 'edit') _editNote(note);
-                          if (action == 'delete')
-                            _deleteRow(
-                              'property_notes',
-                              note['id'],
-                              gr ? 'σημείωση' : 'notice',
-                            );
-                        },
-                        itemBuilder: (ctx) => [
-                          PopupMenuItem(
-                            value: 'edit',
-                            child: Text(gr ? 'Επεξεργασία' : 'Edit'),
-                          ),
-                          PopupMenuItem(
-                            value: 'delete',
-                            child: Text(gr ? 'Διαγραφή' : 'Delete'),
-                          ),
-                        ],
-                      )
-                    : null,
-              ),
-            );
-          }).toList(),
-        ),
-      );
-    },
-  );
-
-  Future<void> openVote(Map<String, dynamic> vote) async {
-    final options = List<Map<String, dynamic>>.from(
-      await db
-          .from('property_vote_options')
-          .select('id, label')
-          .eq('vote_id', vote['id']),
-    );
-    if (!mounted || options.isEmpty) return;
-    String? selected;
-    final choice = await showDialog<String>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialog) => AlertDialog(
-          title: Text(vote['title'] as String? ?? ''),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(vote['question'] as String? ?? ''),
-              ...options.map(
-                (o) => RadioListTile<String>(
-                  value: o['id'] as String,
-                  groupValue: selected,
-                  onChanged: (v) => setDialog(() => selected = v),
-                  title: Text(o['label'] as String),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text(gr ? 'Κλείσιμο' : 'Close'),
-            ),
-            FilledButton(
-              onPressed: selected == null
-                  ? null
-                  : () => Navigator.pop(ctx, selected),
-              child: Text(gr ? 'Ψήφισε' : 'Vote'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (choice == null) return;
-    try {
-      await db.rpc(
-        'cast_property_vote',
-        params: {'p_vote_id': vote['id'], 'p_option_id': choice},
-      );
-      message(gr ? 'Η ψήφος καταχωρίστηκε.' : 'Your vote was recorded.');
-    } on PostgrestException catch (e) {
-      message(e.message);
-    }
-  }
-
-  Future<void> openCharge(Map<String, dynamic> run) async {
-    try {
-      final entries = List<Map<String, dynamic>>.from(
-        await db
-            .from('property_charge_entries')
-            .select(
-              'id, amount_due, amount_paid, status, property_owners(organizations(display_name))',
-            )
-            .eq('run_id', run['id']),
-      );
-      if (!mounted) return;
-      await showDialog<void>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text(
-            '${run['period_label']} · ${run['total_amount']} ${run['currency']}',
-          ),
-          content: SizedBox(
-            width: 440,
-            child: entries.isEmpty
-                ? Text(gr ? 'Δεν υπάρχουν κατανομές.' : 'No allocations yet.')
-                : ListView(
-                    shrinkWrap: true,
-                    children: entries.map((entry) {
-                      final owner =
-                          entry['property_owners'] as Map<String, dynamic>? ??
-                          {};
-                      final org =
-                          owner['organizations'] as Map<String, dynamic>? ?? {};
-                      final due = (entry['amount_due'] as num).toDouble(),
-                          paid = (entry['amount_paid'] as num).toDouble();
-                      return ListTile(
-                        title: Text(
-                          org['display_name'] as String? ??
-                              (gr ? 'Ιδιοκτήτης' : 'Owner'),
-                        ),
-                        subtitle: Text(
-                          '${gr ? 'Οφειλή' : 'Due'}: ${due.toStringAsFixed(2)} € · ${gr ? 'Πληρωμή' : 'Paid'}: ${paid.toStringAsFixed(2)} €',
-                        ),
-                        trailing: Wrap(
-                          children: [
+          'p_due_d…2214 tokens truncated…pple Pay ή Google Pay'
+                                  : 'Pay online by card, Apple Pay, or Google Pay',
+                              icon: const Icon(Icons.credit_card_outlined),
+                              onPressed: due > paid && !busy
+                                  ? () => payOnline('charge', entry['id'])
+                                  : null,
+                            ),
                             IconButton(
                               tooltip: gr
                                   ? 'Καταχώριση πληρωμής'
@@ -1154,6 +931,50 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
       }
     } on PostgrestException catch (e) {
       message(e.message);
+    }
+  }
+
+  Future<void> payOnline(String targetType, dynamic targetId) async {
+    if (busy) return;
+    setState(() => busy = true);
+    try {
+      final response = await db.functions.invoke(
+        'create-checkout-session',
+        body: {'target_type': targetType, 'target_id': targetId.toString()},
+      );
+      final data = response.data;
+      final url = data is Map ? data['url']?.toString() : null;
+      if (response.status < 200 || response.status >= 300 || url == null) {
+        final reason = data is Map ? data['error']?.toString() : null;
+        throw Exception(
+          reason ??
+              (gr ? 'Δεν ξεκίνησε η πληρωμή.' : 'Could not start payment.'),
+        );
+      }
+      final opened = await launchUrl(
+        Uri.parse(url),
+        mode: LaunchMode.platformDefault,
+      );
+      if (!opened) {
+        throw Exception(
+          gr
+              ? 'Δεν άνοιξε η ασφαλής σελίδα πληρωμής.'
+              : 'Could not open the secure checkout page.',
+        );
+      }
+    } on FunctionException catch (error) {
+      final details = error.details;
+      final reason = details is Map ? details['error']?.toString() : null;
+      message(
+        reason ??
+            (gr
+                ? 'Δεν ξεκίνησε η ασφαλής πληρωμή. Δοκίμασε ξανά.'
+                : 'Could not start secure checkout. Try again.'),
+      );
+    } catch (error) {
+      message(error.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => busy = false);
     }
   }
 
@@ -1355,6 +1176,8 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     'bank_transfer' => gr ? 'Τραπεζική μεταφορά' : 'Bank transfer',
     'cash' => gr ? 'Μετρητά' : 'Cash',
     'card' => gr ? 'Κάρτα / ηλεκτρονικά' : 'Card / online',
+    'apple_pay' => 'Apple Pay',
+    'google_pay' => 'Google Pay',
     'cheque' => gr ? 'Επιταγή' : 'Cheque',
     _ => gr ? 'Άλλο' : 'Other',
   };
@@ -1621,6 +1444,15 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
                         ),
                         trailing: Wrap(
                           children: [
+                            IconButton(
+                              tooltip: gr
+                                  ? 'Πληρωμή online με κάρτα, Apple Pay ή Google Pay'
+                                  : 'Pay online by card, Apple Pay, or Google Pay',
+                              icon: const Icon(Icons.credit_card_outlined),
+                              onPressed: due > paid && !busy
+                                  ? () => payOnline('rent', row['id'])
+                                  : null,
+                            ),
                             IconButton(
                               tooltip: gr
                                   ? 'Καταχώριση πληρωμής'

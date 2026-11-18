@@ -38,3 +38,17 @@ Use the publishable key for the client app. Do not use a secret or `service_role
 SB_105 enables property-first creation, phone lookup for owners, staff roles, and review actions. SB_106 adds voting, common-charge allocation/payment tracking, and rental contracts. Apply each once in the Supabase SQL Editor after reviewing it. To make the signed-in operator an admin, run a private one-time insert into `public.smartblock_staff` for their `auth.users.id`; do not commit user IDs or service-role credentials. The app exposes the admin review menu only when `is_smartblock_staff()` returns true.
 
 The organization, property, co-owner, and review workflow database scripts are archived in `supabase/queries`. SB_092–SB_104 have been applied to the linked Supabase project. They are retained as reference SQL; do not rerun the table-creation scripts SB_092–SB_096.
+
+## Stripe online payments (test mode)
+
+SB_111 and the `create-checkout-session` / `stripe-webhook` Edge Functions add hosted Stripe Checkout for common-charge entries and rent installments. Stripe records the payment only after its signed webhook confirms settlement. The current implementation deliberately rejects `sk_live_` keys so accidental live charges cannot be made during setup and trial.
+
+The SB_111 database migration is applied and both Edge Functions are deployed to the linked SmartBlock Supabase project. Add these two secrets in Supabase Edge Function Secrets to activate payments:
+
+- `STRIPE_SECRET_KEY`: a Stripe test-mode secret key (`sk_test_...`).
+- `STRIPE_WEBHOOK_SECRET`: the signing secret (`whsec_...`) for the already registered Stripe sandbox webhook at `https://ymlmjalcrgqiijqpvlop.supabase.co/functions/v1/stripe-webhook`, subscribed to `checkout.session.completed` and `checkout.session.async_payment_succeeded`.
+
+In Stripe sandbox, enable card payments and Apple Pay / Google Pay under payment-method settings. Stripe Checkout shows wallet buttons only when Stripe and the customer's browser/device support them. Test with Stripe's published test card details; no live funds should move.
+
+Never put the Stripe secret or webhook signing secret in Flutter code, a GitHub repository variable, or a committed file. Store them only as Supabase Edge Function secrets. A live key is intentionally blocked until the live-payment mode is explicitly enabled in a later change.
+

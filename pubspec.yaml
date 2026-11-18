@@ -36,6 +36,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   supabase_flutter: ^2.18.3
   image_picker: ^1.2.4
+  url_launcher: ^6.3.3
   flutter_web_plugins:
     sdk: flutter
 
@@ -92,4 +93,5 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
 

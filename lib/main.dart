@@ -30,9 +30,41 @@ class SmartBlockApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF176B87)),
         fontFamily: 'Roboto',
       ),
-      home: const AuthGate(),
+      home: const CheckoutReturnNotice(child: AuthGate()),
     );
   }
+}
+
+class CheckoutReturnNotice extends StatefulWidget {
+  const CheckoutReturnNotice({required this.child, super.key});
+  final Widget child;
+
+  @override
+  State<CheckoutReturnNotice> createState() => _CheckoutReturnNoticeState();
+}
+
+class _CheckoutReturnNoticeState extends State<CheckoutReturnNotice> {
+  @override
+  void initState() {
+    super.initState();
+    final result = Uri.base.queryParameters['checkout'];
+    if (result == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final text = switch (result) {
+        'success' => 'Η Stripe επέστρεψε στην εφαρμογή. Το υπόλοιπο ενημερώνεται· ανανέωσε σε λίγο.',
+        'cancelled' => 'Η πληρωμή ακυρώθηκε. Δεν καταχωρίστηκε χρέωση.',
+        _ => null,
+      };
+      if (text != null) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(text)));
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 class AuthGate extends StatelessWidget {
@@ -226,8 +258,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool isGreek = true;
   bool isCreatingAccount = false;
   bool isBusy = false;
-  String get _authRedirectUrl =>
-      kIsWeb
+  String get _authRedirectUrl => kIsWeb
       ? Uri.base.origin + Uri.base.path
       : 'io.supabase.smartblock://login-callback';
 
@@ -556,3 +587,4 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
+
