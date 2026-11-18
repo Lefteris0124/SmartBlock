@@ -36,6 +36,7 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
       // Older deployed schemas do not expose the admin control function yet.
     }
   }
+
   @override
   void dispose() {
     tabs.dispose();
@@ -94,10 +95,17 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 42, color: Theme.of(context).colorScheme.primary),
+              Icon(
+                icon,
+                size: 42,
+                color: Theme.of(context).colorScheme.primary,
+              ),
               const SizedBox(height: 12),
-              Text(title, textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.titleMedium),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
               const SizedBox(height: 8),
               Text(description, textAlign: TextAlign.center),
               const SizedBox(height: 16),
@@ -118,25 +126,67 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
         context: context,
         builder: (ctx) => AlertDialog(
           title: Text(gr ? 'Διαγραφή $item;' : 'Delete $item?'),
-          content: Text(gr
-              ? 'Η διαγραφή δεν μπορεί να αναιρεθεί.'
-              : 'This deletion cannot be undone.'),
+          content: Text(
+            gr
+                ? 'Η διαγραφή δεν μπορεί να αναιρεθεί.'
+                : 'This deletion cannot be undone.',
+          ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(gr ? 'Άκυρο' : 'Cancel')),
-            FilledButton.tonal(onPressed: () => Navigator.pop(ctx, true), child: Text(gr ? 'Διαγραφή' : 'Delete')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(gr ? 'Άκυρο' : 'Cancel'),
+            ),
+            FilledButton.tonal(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(gr ? 'Διαγραφή' : 'Delete'),
+            ),
           ],
         ),
-      ) == true;
+      ) ==
+      true;
 
   Future<void> _editNote(Map<String, dynamic> note) async {
     final text = TextEditingController(text: note['body'] as String? ?? '');
     final form = GlobalKey<FormState>();
-    final save = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
-      title: Text(gr ? 'Επεξεργασία σημείωσης' : 'Edit notice'),
-      content: Form(key: form, child: TextFormField(controller: text, autofocus: true, maxLines: 4, maxLength: 500, validator: required, decoration: InputDecoration(labelText: gr ? 'Μήνυμα' : 'Message'))),
-      actions: [TextButton(onPressed:()=>Navigator.pop(ctx,false),child:Text(gr?'Άκυρο':'Cancel')),FilledButton(onPressed:()=>form.currentState!.validate()?Navigator.pop(ctx,true):null,child:Text(gr?'Αποθήκευση':'Save'))],
-    ));
-    if(save==true){try{await db.from('property_notes').update({'body':text.text.trim()}).eq('id',note['id']);await refresh();}on PostgrestException catch(e){message(e.message);}}
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(gr ? 'Επεξεργασία σημείωσης' : 'Edit notice'),
+        content: Form(
+          key: form,
+          child: TextFormField(
+            controller: text,
+            autofocus: true,
+            maxLines: 4,
+            maxLength: 500,
+            validator: required,
+            decoration: InputDecoration(labelText: gr ? 'Μήνυμα' : 'Message'),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(gr ? 'Άκυρο' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                form.currentState!.validate() ? Navigator.pop(ctx, true) : null,
+            child: Text(gr ? 'Αποθήκευση' : 'Save'),
+          ),
+        ],
+      ),
+    );
+    if (save == true) {
+      try {
+        await db
+            .from('property_notes')
+            .update({'body': text.text.trim()})
+            .eq('id', note['id']);
+        await refresh();
+      } on PostgrestException catch (e) {
+        message(e.message);
+      }
+    }
     text.dispose();
   }
 
@@ -153,60 +203,323 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
 
   Future<void> _editVote(Map<String, dynamic> vote) async {
     final title = TextEditingController(text: vote['title'] as String? ?? '');
-    final question = TextEditingController(text: vote['question'] as String? ?? '');
+    final question = TextEditingController(
+      text: vote['question'] as String? ?? '',
+    );
     var status = vote['status'] as String? ?? 'open';
     final form = GlobalKey<FormState>();
-    final save = await showDialog<bool>(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx,setDialog)=>AlertDialog(
-      title: Text(gr ? 'Επεξεργασία ψηφοφορίας' : 'Edit vote'),
-      content: SizedBox(width:440,child:Form(key:form,child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
-        TextFormField(controller:title,decoration:InputDecoration(labelText:gr?'Τίτλος':'Title'),validator:required),
-        TextFormField(controller:question,decoration:InputDecoration(labelText:gr?'Ερώτηση':'Question'),validator:required),
-        DropdownButtonFormField<String>(value:status,decoration:InputDecoration(labelText:gr?'Κατάσταση':'Status'),items:['draft','open','closed'].map((s)=>DropdownMenuItem(value:s,child:Text(switch(s){'draft'=>gr?'Πρόχειρη':'Draft','open'=>gr?'Ανοιχτή':'Open',_=>gr?'Κλειστή':'Closed'}))).toList(),onChanged:(v){if(v!=null)setDialog(()=>status=v);}),
-      ])))),
-      actions:[TextButton(onPressed:()=>Navigator.pop(ctx,false),child:Text(gr?'Άκυρο':'Cancel')),FilledButton(onPressed:()=>form.currentState!.validate()?Navigator.pop(ctx,true):null,child:Text(gr?'Αποθήκευση':'Save'))],
-    )));
-    if(save==true){try{await db.from('property_votes').update({'title':title.text.trim(),'question':question.text.trim(),'status':status}).eq('id',vote['id']);await refresh();}on PostgrestException catch(e){message(e.message);}}
-    title.dispose();question.dispose();
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: Text(gr ? 'Επεξεργασία ψηφοφορίας' : 'Edit vote'),
+          content: SizedBox(
+            width: 440,
+            child: Form(
+              key: form,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: title,
+                      decoration: InputDecoration(
+                        labelText: gr ? 'Τίτλος' : 'Title',
+                      ),
+                      validator: required,
+                    ),
+                    TextFormField(
+                      controller: question,
+                      decoration: InputDecoration(
+                        labelText: gr ? 'Ερώτηση' : 'Question',
+                      ),
+                      validator: required,
+                    ),
+                    DropdownButtonFormField<String>(
+                      value: status,
+                      decoration: InputDecoration(
+                        labelText: gr ? 'Κατάσταση' : 'Status',
+                      ),
+                      items: ['draft', 'open', 'closed']
+                          .map(
+                            (s) => DropdownMenuItem(
+                              value: s,
+                              child: Text(switch (s) {
+                                'draft' => gr ? 'Πρόχειρη' : 'Draft',
+                                'open' => gr ? 'Ανοιχτή' : 'Open',
+                                _ => gr ? 'Κλειστή' : 'Closed',
+                              }),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (v) {
+                        if (v != null) setDialog(() => status = v);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(gr ? 'Άκυρο' : 'Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => form.currentState!.validate()
+                  ? Navigator.pop(ctx, true)
+                  : null,
+              child: Text(gr ? 'Αποθήκευση' : 'Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (save == true) {
+      try {
+        await db
+            .from('property_votes')
+            .update({
+              'title': title.text.trim(),
+              'question': question.text.trim(),
+              'status': status,
+            })
+            .eq('id', vote['id']);
+        await refresh();
+      } on PostgrestException catch (e) {
+        message(e.message);
+      }
+    }
+    title.dispose();
+    question.dispose();
   }
 
   Future<void> _editCharge(Map<String, dynamic> run) async {
-    final period=TextEditingController(text:run['period_label'] as String? ?? '');
-    final desc=TextEditingController(text:run['description'] as String? ?? '');
-    final due=TextEditingController(text:run['due_date'] as String? ?? '');
-    var status=run['status'] as String? ?? 'open';
-    final form=GlobalKey<FormState>();
-    final save=await showDialog<bool>(context:context,builder:(ctx)=>StatefulBuilder(builder:(ctx,setDialog)=>AlertDialog(
-      title:Text(gr?'Επεξεργασία χρέωσης':'Edit charge'),
-      content:SizedBox(width:440,child:Form(key:form,child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
-        TextFormField(controller:period,decoration:InputDecoration(labelText:gr?'Περίοδος':'Period'),validator:required),
-        TextFormField(controller:desc,decoration:InputDecoration(labelText:gr?'Περιγραφή':'Description')),
-        TextFormField(controller:due,decoration:InputDecoration(labelText:'YYYY-MM-DD'),validator:(v)=>DateTime.tryParse((v??'').trim())==null?(gr?'Χρησιμοποίησε ημερομηνία YYYY-MM-DD.':'Enter a date as YYYY-MM-DD.'):null),
-        DropdownButtonFormField<String>(value:status,decoration:InputDecoration(labelText:gr?'Κατάσταση':'Status'),items:['open','closed'].map((s)=>DropdownMenuItem(value:s,child:Text(s=='open'?(gr?'Ανοιχτή':'Open'):(gr?'Κλειστή':'Closed')))).toList(),onChanged:(v){if(v!=null)setDialog(()=>status=v);}),
-      ])))),
-      actions:[TextButton(onPressed:()=>Navigator.pop(ctx,false),child:Text(gr?'Άκυρο':'Cancel')),FilledButton(onPressed:()=>form.currentState!.validate()?Navigator.pop(ctx,true):null,child:Text(gr?'Αποθήκευση':'Save'))],
-    )));
-    if(save==true){try{await db.from('property_charge_runs').update({'period_label':period.text.trim(),'description':desc.text.trim().isEmpty?null:desc.text.trim(),'due_date':due.text.trim(),'status':status}).eq('id',run['id']);await refresh();}on PostgrestException catch(e){message(e.message);}}
-    period.dispose();desc.dispose();due.dispose();
+    final period = TextEditingController(
+      text: run['period_label'] as String? ?? '',
+    );
+    final desc = TextEditingController(
+      text: run['description'] as String? ?? '',
+    );
+    final due = TextEditingController(text: run['due_date'] as String? ?? '');
+    var status = run['status'] as String? ?? 'open';
+    final form = GlobalKey<FormState>();
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: Text(gr ? 'Επεξεργασία χρέωσης' : 'Edit charge'),
+          content: SizedBox(
+            width: 440,
+            child: Form(
+              key: form,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: period,
+                      decoration: InputDecoration(
+                        labelText: gr ? 'Περίοδος' : 'Period',
+                      ),
+                      validator: required,
+                    ),
+                    TextFormField(
+                      controller: desc,
+                      decoration: InputDecoration(
+                        labelText: gr ? 'Περιγραφή' : 'Description',
+                      ),
+                    ),
+                    TextFormField(
+                      controller: due,
+                      decoration: InputDecoration(labelText: 'YYYY-MM-DD'),
+                      validator: (v) =>
+                          DateTime.tryParse((v ?? '').trim()) == null
+                          ? (gr
+                                ? 'Χρησιμοποίησε ημερομηνία YYYY-MM-DD.'
+                                : 'Enter a date as YYYY-MM-DD.')
+                          : null,
+                    ),
+                    DropdownButtonFormField<String>(
+                      value: status,
+                      decoration: InputDecoration(
+                        labelText: gr ? 'Κατάσταση' : 'Status',
+                      ),
+                      items: ['open', 'closed']
+                          .map(
+                            (s) => DropdownMenuItem(
+                              value: s,
+                              child: Text(
+                                s == 'open'
+                                    ? (gr ? 'Ανοιχτή' : 'Open')
+                                    : (gr ? 'Κλειστή' : 'Closed'),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (v) {
+                        if (v != null) setDialog(() => status = v);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(gr ? 'Άκυρο' : 'Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => form.currentState!.validate()
+                  ? Navigator.pop(ctx, true)
+                  : null,
+              child: Text(gr ? 'Αποθήκευση' : 'Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (save == true) {
+      try {
+        await db
+            .from('property_charge_runs')
+            .update({
+              'period_label': period.text.trim(),
+              'description': desc.text.trim().isEmpty ? null : desc.text.trim(),
+              'due_date': due.text.trim(),
+              'status': status,
+            })
+            .eq('id', run['id']);
+        await refresh();
+      } on PostgrestException catch (e) {
+        message(e.message);
+      }
+    }
+    period.dispose();
+    desc.dispose();
+    due.dispose();
   }
 
   Future<void> _editRent(Map<String, dynamic> contract) async {
-    final unit=TextEditingController(text:contract['unit_reference'] as String? ?? '');
-    final tenant=TextEditingController(text:contract['tenant_name'] as String? ?? '');
-    final phone=TextEditingController(text:contract['tenant_phone_e164'] as String? ?? '');
-    var status=contract['status'] as String? ?? 'active';
-    final form=GlobalKey<FormState>();
-    final save=await showDialog<bool>(context:context,builder:(ctx)=>StatefulBuilder(builder:(ctx,setDialog)=>AlertDialog(
-      title:Text(gr?'Επεξεργασία μίσθωσης':'Edit rental'),
-      content:SizedBox(width:440,child:Form(key:form,child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
-        TextFormField(controller:unit,decoration:InputDecoration(labelText:gr?'Μονάδα':'Unit'),validator:required),
-        TextFormField(controller:tenant,decoration:InputDecoration(labelText:gr?'Ενοικιαστής':'Tenant'),validator:required),
-        TextFormField(controller:phone,keyboardType:TextInputType.phone,decoration:InputDecoration(labelText:gr?'Τηλέφωνο':'Phone'),validator:(v){final p=(v??'').trim();return p.isEmpty||RegExp(r'^\+[1-9][0-9]{6,14}$').hasMatch(p)?null:(gr?'Χρησιμοποίησε διεθνή μορφή.':'Use international phone format.');}),
-        DropdownButtonFormField<String>(value:status,decoration:InputDecoration(labelText:gr?'Κατάσταση':'Status'),items:['active','ended','cancelled'].map((s)=>DropdownMenuItem(value:s,child:Text(switch(s){'active'=>gr?'Ενεργή':'Active','ended'=>gr?'Έληξε':'Ended',_=>gr?'Ακυρώθηκε':'Cancelled'}))).toList(),onChanged:(v){if(v!=null)setDialog(()=>status=v);}),
-      ])))),
-      actions:[TextButton(onPressed:()=>Navigator.pop(ctx,false),child:Text(gr?'Άκυρο':'Cancel')),FilledButton(onPressed:()=>form.currentState!.validate()?Navigator.pop(ctx,true):null,child:Text(gr?'Αποθήκευση':'Save'))],
-    )));
-    if(save==true){try{await db.from('property_rent_contracts').update({'unit_reference':unit.text.trim(),'tenant_name':tenant.text.trim(),'tenant_phone_e164':phone.text.trim().isEmpty?null:phone.text.trim(),'status':status}).eq('id',contract['id']);await refresh();}on PostgrestException catch(e){message(e.message);}}
-    unit.dispose();tenant.dispose();phone.dispose();
+    final unit = TextEditingController(
+      text: contract['unit_reference'] as String? ?? '',
+    );
+    final tenant = TextEditingController(
+      text: contract['tenant_name'] as String? ?? '',
+    );
+    final phone = TextEditingController(
+      text: contract['tenant_phone_e164'] as String? ?? '',
+    );
+    var status = contract['status'] as String? ?? 'active';
+    final form = GlobalKey<FormState>();
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: Text(gr ? 'Επεξεργασία μίσθωσης' : 'Edit rental'),
+          content: SizedBox(
+            width: 440,
+            child: Form(
+              key: form,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: unit,
+                      decoration: InputDecoration(
+                        labelText: gr ? 'Μονάδα' : 'Unit',
+                      ),
+                      validator: required,
+                    ),
+                    TextFormField(
+                      controller: tenant,
+                      decoration: InputDecoration(
+                        labelText: gr ? 'Ενοικιαστής' : 'Tenant',
+                      ),
+                      validator: required,
+                    ),
+                    TextFormField(
+                      controller: phone,
+                      keyboardType: TextInputType.phone,
+                      decoration: InputDecoration(
+                        labelText: gr ? 'Τηλέφωνο' : 'Phone',
+                      ),
+                      validator: (v) {
+                        final p = (v ?? '').trim();
+                        return p.isEmpty ||
+                                RegExp(r'^\+[1-9][0-9]{6,14}$').hasMatch(p)
+                            ? null
+                            : (gr
+                                  ? 'Χρησιμοποίησε διεθνή μορφή.'
+                                  : 'Use international phone format.');
+                      },
+                    ),
+                    DropdownButtonFormField<String>(
+                      value: status,
+                      decoration: InputDecoration(
+                        labelText: gr ? 'Κατάσταση' : 'Status',
+                      ),
+                      items: ['active', 'ended', 'cancelled']
+                          .map(
+                            (s) => DropdownMenuItem(
+                              value: s,
+                              child: Text(switch (s) {
+                                'active' => gr ? 'Ενεργή' : 'Active',
+                                'ended' => gr ? 'Έληξε' : 'Ended',
+                                _ => gr ? 'Ακυρώθηκε' : 'Cancelled',
+                              }),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (v) {
+                        if (v != null) setDialog(() => status = v);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(gr ? 'Άκυρο' : 'Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => form.currentState!.validate()
+                  ? Navigator.pop(ctx, true)
+                  : null,
+              child: Text(gr ? 'Αποθήκευση' : 'Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (save == true) {
+      try {
+        await db
+            .from('property_rent_contracts')
+            .update({
+              'unit_reference': unit.text.trim(),
+              'tenant_name': tenant.text.trim(),
+              'tenant_phone_e164': phone.text.trim().isEmpty
+                  ? null
+                  : phone.text.trim(),
+              'status': status,
+            })
+            .eq('id', contract['id']);
+        await refresh();
+      } on PostgrestException catch (e) {
+        message(e.message);
+      }
+    }
+    unit.dispose();
+    tenant.dispose();
+    phone.dispose();
   }
 
   Future<List<Map<String, dynamic>>> rows(String table) async =>
@@ -526,7 +839,9 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
             maxLength: 500,
             decoration: InputDecoration(
               labelText: gr ? 'Σύντομη ενημέρωση' : 'Short update',
-              hintText: gr ? 'π.χ. Παρκάρω μπροστά στην είσοδο για 5 λεπτά' : 'e.g. Parking by the entrance for 5 minutes',
+              hintText: gr
+                  ? 'π.χ. Παρκάρω μπροστά στην είσοδο για 5 λεπτά'
+                  : 'e.g. Parking by the entrance for 5 minutes',
             ),
             validator: (value) => value == null || value.trim().isEmpty
                 ? (gr ? 'Γράψε ένα μήνυμα.' : 'Enter a message.')
@@ -534,14 +849,25 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(gr ? 'Άκυρο' : 'Cancel')),
-          FilledButton(onPressed: () => key.currentState!.validate() ? Navigator.pop(ctx, true) : null, child: Text(gr ? 'Δημοσίευση' : 'Post')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(gr ? 'Άκυρο' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                key.currentState!.validate() ? Navigator.pop(ctx, true) : null,
+            child: Text(gr ? 'Δημοσίευση' : 'Post'),
+          ),
         ],
       ),
     );
     if (saved == true) {
       try {
-        await db.from('property_notes').insert({'property_id': widget.propertyId, 'body': controller.text.trim(), 'created_by': db.auth.currentUser!.id});
+        await db.from('property_notes').insert({
+          'property_id': widget.propertyId,
+          'body': controller.text.trim(),
+          'created_by': db.auth.currentUser!.id,
+        });
         await refresh();
       } on PostgrestException catch (e) {
         message(e.message);
@@ -551,38 +877,64 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
   }
 
   Widget notesListing() => FutureBuilder<List<Map<String, dynamic>>>(
-    future: db.from('property_notes').select('id, body, created_at, created_by').eq('property_id', widget.propertyId).order('created_at', ascending: false).then((rows) => List<Map<String, dynamic>>.from(rows)),
+    future: db
+        .from('property_notes')
+        .select('id, body, created_at, created_by')
+        .eq('property_id', widget.propertyId)
+        .order('created_at', ascending: false)
+        .then((rows) => List<Map<String, dynamic>>.from(rows)),
     builder: (context, snapshot) {
-      if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+      if (snapshot.connectionState == ConnectionState.waiting)
+        return const Center(child: CircularProgressIndicator());
       if (snapshot.hasError) return loadError();
       final notes = snapshot.data ?? [];
-      if (notes.isEmpty) return emptyState(
-        icon: Icons.chat_bubble_outline,
-        title: gr ? 'Δεν υπάρχουν σημειώσεις ακόμη' : 'No notices yet',
-        description: gr ? 'Χρησιμοποίησε τις σημειώσεις για σύντομες ενημερώσεις προς τους ενοίκους.' : 'Use notices for short updates to residents.',
-        action: gr ? 'Νέα σημείωση' : 'Write a notice',
-        onPressed: createNote,
-      );
+      if (notes.isEmpty)
+        return emptyState(
+          icon: Icons.chat_bubble_outline,
+          title: gr ? 'Δεν υπάρχουν σημειώσεις ακόμη' : 'No notices yet',
+          description: gr
+              ? 'Χρησιμοποίησε τις σημειώσεις για σύντομες ενημερώσεις προς τους ενοίκους.'
+              : 'Use notices for short updates to residents.',
+          action: gr ? 'Νέα σημείωση' : 'Write a notice',
+          onPressed: createNote,
+        );
       return RefreshIndicator(
         onRefresh: refresh,
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: notes.map((note) {
-            return Card(child: ListTile(
-              leading: const Icon(Icons.chat_bubble_outline),
-              title: Text(note['body'] as String? ?? ''),
-              subtitle: Text('${gr ? 'Κάτοικος' : 'Resident'} · ${formatTimestamp(note['created_at'])}'),
-              trailing: isAdmin ? PopupMenuButton<String>(
-                onSelected: (action) {
-                  if (action == 'edit') _editNote(note);
-                  if (action == 'delete') _deleteRow('property_notes', note['id'], gr ? 'σημείωση' : 'notice');
-                },
-                itemBuilder: (ctx) => [
-                  PopupMenuItem(value:'edit',child:Text(gr?'Επεξεργασία':'Edit')),
-                  PopupMenuItem(value:'delete',child:Text(gr?'Διαγραφή':'Delete')),
-                ],
-              ) : null,
-            ));
+            return Card(
+              child: ListTile(
+                leading: const Icon(Icons.chat_bubble_outline),
+                title: Text(note['body'] as String? ?? ''),
+                subtitle: Text(
+                  '${gr ? 'Κάτοικος' : 'Resident'} · ${formatTimestamp(note['created_at'])}',
+                ),
+                trailing: isAdmin
+                    ? PopupMenuButton<String>(
+                        onSelected: (action) {
+                          if (action == 'edit') _editNote(note);
+                          if (action == 'delete')
+                            _deleteRow(
+                              'property_notes',
+                              note['id'],
+                              gr ? 'σημείωση' : 'notice',
+                            );
+                        },
+                        itemBuilder: (ctx) => [
+                          PopupMenuItem(
+                            value: 'edit',
+                            child: Text(gr ? 'Επεξεργασία' : 'Edit'),
+                          ),
+                          PopupMenuItem(
+                            value: 'delete',
+                            child: Text(gr ? 'Διαγραφή' : 'Delete'),
+                          ),
+                        ],
+                      )
+                    : null,
+              ),
+            );
           }).toList(),
         ),
       );
@@ -684,14 +1036,24 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
                         subtitle: Text(
                           '${gr ? 'Οφειλή' : 'Due'}: ${due.toStringAsFixed(2)} € · ${gr ? 'Πληρωμή' : 'Paid'}: ${paid.toStringAsFixed(2)} €',
                         ),
-                        trailing: IconButton(
-                          tooltip: gr
-                              ? (isAdmin ? 'Διόρθωση πληρωμής' : 'Καταχώριση πληρωμής')
-                              : (isAdmin ? 'Adjust payment' : 'Record payment'),
-                          icon: const Icon(Icons.payments_outlined),
-                          onPressed: () => isAdmin
-                              ? _editPaidAmount(table:'property_charge_entries',id:entry['id'],due:due,currentPaid:paid,rent:false)
-                              : recordPayment(entry, due - paid),
+                        trailing: Wrap(
+                          children: [
+                            IconButton(
+                              tooltip: gr
+                                  ? 'Καταχώριση πληρωμής'
+                                  : 'Record payment',
+                              icon: const Icon(Icons.payments_outlined),
+                              onPressed: () => recordPayment(entry, due - paid),
+                            ),
+                            IconButton(
+                              tooltip: gr
+                                  ? 'Ιστορικό πληρωμών'
+                                  : 'Payment history',
+                              icon: const Icon(Icons.history),
+                              onPressed: () =>
+                                  _showPaymentHistory(entry['id'], rent: false),
+                            ),
+                          ],
                         ),
                       );
                     }).toList(),
@@ -714,51 +1076,19 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     Map<String, dynamic> entry,
     double outstanding,
   ) async {
-    final amount = TextEditingController(text: outstanding.toStringAsFixed(2));
-    final key = GlobalKey<FormState>();
-    final result = await showDialog<double>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(gr ? 'Καταχώριση πληρωμής' : 'Record payment'),
-        content: Form(
-          key: key,
-          child: TextFormField(
-            controller: amount,
-            keyboardType: TextInputType.number,
-            decoration: InputDecoration(
-              labelText: gr ? 'Ποσό (€)' : 'Amount (€)',
-            ),
-            validator: (v) {
-              final n = double.tryParse((v ?? '').replaceAll(',', '.'));
-              return n == null || n <= 0 || n > outstanding
-                  ? (gr ? 'Μη έγκυρο ποσό.' : 'Invalid amount.')
-                  : null;
-            },
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(gr ? 'Άκυρο' : 'Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => key.currentState!.validate()
-                ? Navigator.pop(
-                    ctx,
-                    double.parse(amount.text.replaceAll(',', '.')),
-                  )
-                : null,
-            child: Text(gr ? 'Αποθήκευση' : 'Save'),
-          ),
-        ],
-      ),
-    );
-    amount.dispose();
+    final result = await _collectPayment(outstanding, rent: false);
     if (result == null) return;
     try {
       await db.rpc(
         'record_property_charge_payment',
-        params: {'p_entry_id': entry['id'], 'p_amount': result},
+        params: {
+          'p_entry_id': entry['id'],
+          'p_amount': result['amount'],
+          'p_method': result['method'],
+          'p_reference': result['reference'],
+          'p_notes': result['notes'],
+          'p_paid_at': DateTime.now().toUtc().toIso8601String(),
+        },
       );
       if (mounted) {
         message(gr ? 'Η πληρωμή καταχωρίστηκε.' : 'Payment recorded.');
@@ -769,35 +1099,191 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     }
   }
 
-  Future<void> _editPaidAmount({
-    required String table,
-    required dynamic id,
-    required double due,
-    required double currentPaid,
+  Future<Map<String, dynamic>?> _collectPayment(
+    double outstanding, {
     required bool rent,
   }) async {
-    final amount = TextEditingController(text: currentPaid.toStringAsFixed(2));
-    final form = GlobalKey<FormState>();
-    final result = await showDialog<double>(context: context, builder: (ctx) => AlertDialog(
-      title: Text(gr ? 'Διόρθωση καταβληθέντος ποσού' : 'Adjust amount paid'),
-      content: Form(key:form,child:TextFormField(
-        controller:amount,keyboardType:const TextInputType.numberWithOptions(decimal:true),
-        decoration:InputDecoration(labelText:gr?'Ποσό που έχει πληρωθεί (€)':'Amount paid (€)'),
-        validator:(v){final n=double.tryParse((v??'').replaceAll(',','.'));return n==null||n<0||n>due?(gr?'Βάλε ποσό από 0 έως ${due.toStringAsFixed(2)} €':'Enter an amount from 0 to ${due.toStringAsFixed(2)} €'):null;},
-      )),
-      actions:[TextButton(onPressed:()=>Navigator.pop(ctx),child:Text(gr?'Άκυρο':'Cancel')),FilledButton(onPressed:()=>form.currentState!.validate()?Navigator.pop(ctx,double.parse(amount.text.replaceAll(',','.'))):null,child:Text(gr?'Αποθήκευση':'Save'))],
-    ));
+    final amount = TextEditingController(text: outstanding.toStringAsFixed(2));
+    final reference = TextEditingController();
+    final notes = TextEditingController();
+    final key = GlobalKey<FormState>();
+    var method = 'bank_transfer';
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          gr
+              ? (rent ? 'Πληρωμή ενοικίου' : 'Πληρωμή κοινοχρήστων')
+              : (rent ? 'Record rent payment' : 'Record charge payment'),
+        ),
+        content: Form(
+          key: key,
+          child: SizedBox(
+            width: 420,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: amount,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: gr ? 'Ποσό (€)' : 'Amount (€)',
+                    ),
+                    validator: (v) {
+                      final n = double.tryParse((v ?? '').replaceAll(',', '.'));
+                      return n == null || n <= 0 || n > outstanding
+                          ? (gr ? 'Μη έγκυρο ποσό.' : 'Invalid amount.')
+                          : null;
+                    },
+                  ),
+                  DropdownButtonFormField<String>(
+                    value: method,
+                    decoration: InputDecoration(
+                      labelText: gr ? 'Τρόπος πληρωμής' : 'Payment method',
+                    ),
+                    items: [
+                      DropdownMenuItem(
+                        value: 'bank_transfer',
+                        child: Text(
+                          gr ? 'Τραπεζική μεταφορά' : 'Bank transfer',
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'cash',
+                        child: Text(gr ? 'Μετρητά' : 'Cash'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'card',
+                        child: Text(
+                          gr ? 'Κάρτα / ηλεκτρονικά' : 'Card / online',
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'cheque',
+                        child: Text(gr ? 'Επιταγή' : 'Cheque'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'other',
+                        child: Text(gr ? 'Άλλο' : 'Other'),
+                      ),
+                    ],
+                    onChanged: (v) {
+                      if (v != null) method = v;
+                    },
+                  ),
+                  TextFormField(
+                    controller: reference,
+                    decoration: InputDecoration(
+                      labelText: gr
+                          ? 'Αριθμός αναφοράς (προαιρετικό)'
+                          : 'Reference (optional)',
+                    ),
+                  ),
+                  TextFormField(
+                    controller: notes,
+                    decoration: InputDecoration(
+                      labelText: gr
+                          ? 'Σημειώσεις (προαιρετικά)'
+                          : 'Notes (optional)',
+                    ),
+                    maxLines: 2,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(gr ? 'Άκυρο' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => key.currentState!.validate()
+                ? Navigator.pop(ctx, {
+                    'amount': double.parse(amount.text.replaceAll(',', '.')),
+                    'method': method,
+                    'reference': reference.text.trim().isEmpty
+                        ? null
+                        : reference.text.trim(),
+                    'notes': notes.text.trim().isEmpty
+                        ? null
+                        : notes.text.trim(),
+                  })
+                : null,
+            child: Text(gr ? 'Αποθήκευση' : 'Save'),
+          ),
+        ],
+      ),
+    );
     amount.dispose();
-    if(result==null)return;
-    final status=result==0?'unpaid':result>=due?'paid':'partial';
-    try{
-      await db.from(table).update({
-        'amount_paid':result,'status':status,
-        if(rent)'paid_at':result>=due?DateTime.now().toUtc().toIso8601String():null,
-        if(!rent)'updated_at':DateTime.now().toUtc().toIso8601String(),
-      }).eq('id',id);
-      if(mounted){message(gr?'Η πληρωμή ενημερώθηκε.':'Payment updated.');setState((){});}
-    }on PostgrestException catch(e){message(e.message);}
+    reference.dispose();
+    notes.dispose();
+    return result;
+  }
+
+  Future<void> _showPaymentHistory(
+    dynamic targetId, {
+    required bool rent,
+  }) async {
+    try {
+      final records = await db
+          .from('property_payment_records')
+          .select('amount,payment_method,reference,notes,paid_at')
+          .eq(rent ? 'rent_installment_id' : 'charge_entry_id', targetId)
+          .order('paid_at', ascending: false);
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(gr ? 'Ιστορικό πληρωμών' : 'Payment history'),
+          content: SizedBox(
+            width: 420,
+            child: records.isEmpty
+                ? Text(
+                    gr
+                        ? 'Δεν έχουν καταχωριστεί πληρωμές.'
+                        : 'No payments recorded yet.',
+                  )
+                : ListView(
+                    shrinkWrap: true,
+                    children: records
+                        .map<Widget>(
+                          (row) => ListTile(
+                            leading: const Icon(Icons.receipt_long_outlined),
+                            title: Text(
+                              '${(row['amount'] as num).toStringAsFixed(2)} € · ${paymentMethodLabel(row['payment_method'])}',
+                            ),
+                            subtitle: Text(
+                              [
+                                if ((row['reference'] ?? '')
+                                    .toString()
+                                    .isNotEmpty)
+                                  '${gr ? 'Αναφορά' : 'Ref'}: ${row['reference']}',
+                                if ((row['notes'] ?? '').toString().isNotEmpty)
+                                  row['notes'],
+                                formatTimestamp(row['paid_at']),
+                              ].join(' · '),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(gr ? 'Κλείσιμο' : 'Close'),
+            ),
+          ],
+        ),
+      );
+    } on PostgrestException catch (e) {
+      message(e.message);
+    }
   }
 
   String formatTimestamp(dynamic value) {
@@ -806,6 +1292,14 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     String two(int n) => n.toString().padLeft(2, '0');
     return '${two(date.day)}/${two(date.month)}/${date.year} ${two(date.hour)}:${two(date.minute)}';
   }
+
+  String paymentMethodLabel(dynamic method) => switch (method) {
+    'bank_transfer' => gr ? 'Τραπεζική μεταφορά' : 'Bank transfer',
+    'cash' => gr ? 'Μετρητά' : 'Cash',
+    'card' => gr ? 'Κάρτα / ηλεκτρονικά' : 'Card / online',
+    'cheque' => gr ? 'Επιταγή' : 'Cheque',
+    _ => gr ? 'Άλλο' : 'Other',
+  };
 
   String? required(String? v) =>
       v == null || v.trim().isEmpty ? (gr ? 'Υποχρεωτικό' : 'Required') : null;
@@ -826,7 +1320,9 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
           return emptyState(
             icon: icon,
             title: gr ? 'Δεν υπάρχουν εγγραφές ακόμη' : 'No records yet',
-            description: gr ? 'Πρόσθεσε την πρώτη καταχώριση σε αυτή την ενότητα.' : 'Add the first record to this section.',
+            description: gr
+                ? 'Πρόσθεσε την πρώτη καταχώριση σε αυτή την ενότητα.'
+                : 'Add the first record to this section.',
             action: gr ? 'Νέα καταχώριση' : 'Add record',
             onPressed: () => tabs.index == 0 ? createVote() : createRent(),
           );
@@ -874,7 +1370,9 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
         return emptyState(
           icon: Icons.how_to_vote_outlined,
           title: gr ? 'Δεν υπάρχουν ψηφοφορίες ακόμη' : 'No votes yet',
-          description: gr ? 'Δημιούργησε μια ψηφοφορία για να αποφασίσουν οι ιδιοκτήτες.' : 'Create a vote so owners can decide together.',
+          description: gr
+              ? 'Δημιούργησε μια ψηφοφορία για να αποφασίσουν οι ιδιοκτήτες.'
+              : 'Create a vote so owners can decide together.',
           action: gr ? 'Νέα ψηφοφορία' : 'Create a vote',
           onPressed: createVote,
         );
@@ -887,16 +1385,37 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
                   leading: const Icon(Icons.how_to_vote_outlined),
                   title: Text(vote['title'] as String? ?? ''),
                   subtitle: Text(
-                    '${vote['question'] ?? ''} · ${switch(vote['status']) {'draft' => gr ? 'Πρόχειρη' : 'Draft', 'open' => gr ? 'Ανοιχτή' : 'Open', 'closed' => gr ? 'Κλειστή' : 'Closed', _ => vote['status'] ?? ''}}',
+                    '${vote['question'] ?? ''} · ${switch (vote['status']) {
+                      'draft' => gr ? 'Πρόχειρη' : 'Draft',
+                      'open' => gr ? 'Ανοιχτή' : 'Open',
+                      'closed' => gr ? 'Κλειστή' : 'Closed',
+                      _ => vote['status'] ?? '',
+                    }}',
                   ),
                   onTap: () => openVote(vote),
-                  trailing: isAdmin ? PopupMenuButton<String>(
-                    onSelected:(action){if(action=='edit')_editVote(vote);if(action=='delete')_deleteRow('property_votes',vote['id'],gr?'ψηφοφορία':'vote');},
-                    itemBuilder:(ctx)=>[
-                      PopupMenuItem(value:'edit',child:Text(gr?'Επεξεργασία':'Edit')),
-                      PopupMenuItem(value:'delete',child:Text(gr?'Διαγραφή':'Delete')),
-                    ],
-                  ):null,
+                  trailing: isAdmin
+                      ? PopupMenuButton<String>(
+                          onSelected: (action) {
+                            if (action == 'edit') _editVote(vote);
+                            if (action == 'delete')
+                              _deleteRow(
+                                'property_votes',
+                                vote['id'],
+                                gr ? 'ψηφοφορία' : 'vote',
+                              );
+                          },
+                          itemBuilder: (ctx) => [
+                            PopupMenuItem(
+                              value: 'edit',
+                              child: Text(gr ? 'Επεξεργασία' : 'Edit'),
+                            ),
+                            PopupMenuItem(
+                              value: 'delete',
+                              child: Text(gr ? 'Διαγραφή' : 'Delete'),
+                            ),
+                          ],
+                        )
+                      : null,
                 ),
               ),
             )
@@ -915,8 +1434,12 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
       if (runs.isEmpty)
         return emptyState(
           icon: Icons.receipt_long_outlined,
-          title: gr ? 'Δεν υπάρχουν κοινόχρηστα ακόμη' : 'No shared charges yet',
-          description: gr ? 'Καταχώρισε την περίοδο και το συνολικό ποσό για να δημιουργηθεί η κατανομή.' : 'Add a period and total amount to create a charge run.',
+          title: gr
+              ? 'Δεν υπάρχουν κοινόχρηστα ακόμη'
+              : 'No shared charges yet',
+          description: gr
+              ? 'Καταχώρισε την περίοδο και το συνολικό ποσό για να δημιουργηθεί η κατανομή.'
+              : 'Add a period and total amount to create a charge run.',
           action: gr ? 'Νέα χρέωση' : 'Add a charge',
           onPressed: createCharge,
         );
@@ -931,16 +1454,32 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
                     '${run['period_label']} · ${run['total_amount']} ${run['currency']}',
                   ),
                   subtitle: Text(
-                    '${run['description'] ?? ''} · ${gr ? 'Λήξη' : 'Due'} ${run['due_date']} · ${run['status'] == 'closed' ? (gr?'Κλειστή':'Closed') : (gr?'Ανοιχτή':'Open')}',
+                    '${run['description'] ?? ''} · ${gr ? 'Λήξη' : 'Due'} ${run['due_date']} · ${run['status'] == 'closed' ? (gr ? 'Κλειστή' : 'Closed') : (gr ? 'Ανοιχτή' : 'Open')}',
                   ),
                   onTap: () => openCharge(run),
-                  trailing: isAdmin ? PopupMenuButton<String>(
-                    onSelected:(action){if(action=='edit')_editCharge(run);if(action=='delete')_deleteRow('property_charge_runs',run['id'],gr?'χρέωση κοινοχρήστων':'charge');},
-                    itemBuilder:(ctx)=>[
-                      PopupMenuItem(value:'edit',child:Text(gr?'Επεξεργασία':'Edit')),
-                      PopupMenuItem(value:'delete',child:Text(gr?'Διαγραφή':'Delete')),
-                    ],
-                  ):null,
+                  trailing: isAdmin
+                      ? PopupMenuButton<String>(
+                          onSelected: (action) {
+                            if (action == 'edit') _editCharge(run);
+                            if (action == 'delete')
+                              _deleteRow(
+                                'property_charge_runs',
+                                run['id'],
+                                gr ? 'χρέωση κοινοχρήστων' : 'charge',
+                              );
+                          },
+                          itemBuilder: (ctx) => [
+                            PopupMenuItem(
+                              value: 'edit',
+                              child: Text(gr ? 'Επεξεργασία' : 'Edit'),
+                            ),
+                            PopupMenuItem(
+                              value: 'delete',
+                              child: Text(gr ? 'Διαγραφή' : 'Delete'),
+                            ),
+                          ],
+                        )
+                      : null,
                 ),
               ),
             )
@@ -985,14 +1524,25 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
                         subtitle: Text(
                           '${gr ? 'Οφειλή' : 'Due'} ${due.toStringAsFixed(2)} € · ${gr ? 'Πληρώθηκε' : 'Paid'} ${paid.toStringAsFixed(2)} €',
                         ),
-                        trailing: IconButton(
-                          tooltip: gr
-                              ? (isAdmin ? 'Διόρθωση πληρωμής' : 'Καταχώριση πληρωμής')
-                              : (isAdmin ? 'Adjust payment' : 'Record payment'),
-                          icon: const Icon(Icons.payments_outlined),
-                          onPressed: () => isAdmin
-                              ? _editPaidAmount(table:'property_rent_installments',id:row['id'],due:due,currentPaid:paid,rent:true)
-                              : recordRentPayment(row, due - paid),
+                        trailing: Wrap(
+                          children: [
+                            IconButton(
+                              tooltip: gr
+                                  ? 'Καταχώριση πληρωμής'
+                                  : 'Record payment',
+                              icon: const Icon(Icons.payments_outlined),
+                              onPressed: () =>
+                                  recordRentPayment(row, due - paid),
+                            ),
+                            IconButton(
+                              tooltip: gr
+                                  ? 'Ιστορικό πληρωμών'
+                                  : 'Payment history',
+                              icon: const Icon(Icons.history),
+                              onPressed: () =>
+                                  _showPaymentHistory(row['id'], rent: true),
+                            ),
+                          ],
                         ),
                       );
                     }).toList(),
@@ -1015,51 +1565,19 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     Map<String, dynamic> installment,
     double outstanding,
   ) async {
-    final amount = TextEditingController(text: outstanding.toStringAsFixed(2));
-    final key = GlobalKey<FormState>();
-    final result = await showDialog<double>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(gr ? 'Πληρωμή ενοικίου' : 'Record rent payment'),
-        content: Form(
-          key: key,
-          child: TextFormField(
-            controller: amount,
-            keyboardType: TextInputType.number,
-            decoration: InputDecoration(
-              labelText: gr ? 'Ποσό (€)' : 'Amount (€)',
-            ),
-            validator: (v) {
-              final n = double.tryParse((v ?? '').replaceAll(',', '.'));
-              return n == null || n <= 0 || n > outstanding
-                  ? (gr ? 'Μη έγκυρο ποσό.' : 'Invalid amount.')
-                  : null;
-            },
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(gr ? 'Άκυρο' : 'Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => key.currentState!.validate()
-                ? Navigator.pop(
-                    ctx,
-                    double.parse(amount.text.replaceAll(',', '.')),
-                  )
-                : null,
-            child: Text(gr ? 'Αποθήκευση' : 'Save'),
-          ),
-        ],
-      ),
-    );
-    amount.dispose();
+    final result = await _collectPayment(outstanding, rent: true);
     if (result == null) return;
     try {
       await db.rpc(
         'record_property_rent_payment',
-        params: {'p_installment_id': installment['id'], 'p_amount': result},
+        params: {
+          'p_installment_id': installment['id'],
+          'p_amount': result['amount'],
+          'p_method': result['method'],
+          'p_reference': result['reference'],
+          'p_notes': result['notes'],
+          'p_paid_at': DateTime.now().toUtc().toIso8601String(),
+        },
       );
       if (mounted) {
         message(gr ? 'Η πληρωμή καταχωρίστηκε.' : 'Payment recorded.');
@@ -1080,8 +1598,12 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
       if (contracts.isEmpty)
         return emptyState(
           icon: Icons.key_outlined,
-          title: gr ? 'Δεν υπάρχουν μισθώσεις ακόμη' : 'No rental contracts yet',
-          description: gr ? 'Πρόσθεσε μίσθωση για να παρακολουθείς ενοίκια και πληρωμές.' : 'Add a rental to track rent and payments.',
+          title: gr
+              ? 'Δεν υπάρχουν μισθώσεις ακόμη'
+              : 'No rental contracts yet',
+          description: gr
+              ? 'Πρόσθεσε μίσθωση για να παρακολουθείς ενοίκια και πληρωμές.'
+              : 'Add a rental to track rent and payments.',
           action: gr ? 'Νέα μίσθωση' : 'Add a rental',
           onPressed: createRent,
         );
@@ -1096,16 +1618,36 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
                     '${contract['unit_reference']} · ${contract['tenant_name']}',
                   ),
                   subtitle: Text(
-                    '${contract['monthly_rent']} ${contract['currency']} / ${gr ? 'μήνα' : 'month'} · ${switch(contract['status']) {'active' => gr?'Ενεργή':'Active', 'ended' => gr?'Έληξε':'Ended', _ => gr?'Ακυρώθηκε':'Cancelled'}}',
+                    '${contract['monthly_rent']} ${contract['currency']} / ${gr ? 'μήνα' : 'month'} · ${switch (contract['status']) {
+                      'active' => gr ? 'Ενεργή' : 'Active',
+                      'ended' => gr ? 'Έληξε' : 'Ended',
+                      _ => gr ? 'Ακυρώθηκε' : 'Cancelled',
+                    }}',
                   ),
                   onTap: () => openRent(contract),
-                  trailing: isAdmin ? PopupMenuButton<String>(
-                    onSelected:(action){if(action=='edit')_editRent(contract);if(action=='delete')_deleteRow('property_rent_contracts',contract['id'],gr?'μίσθωση':'rental contract');},
-                    itemBuilder:(ctx)=>[
-                      PopupMenuItem(value:'edit',child:Text(gr?'Επεξεργασία':'Edit')),
-                      PopupMenuItem(value:'delete',child:Text(gr?'Διαγραφή':'Delete')),
-                    ],
-                  ):null,
+                  trailing: isAdmin
+                      ? PopupMenuButton<String>(
+                          onSelected: (action) {
+                            if (action == 'edit') _editRent(contract);
+                            if (action == 'delete')
+                              _deleteRow(
+                                'property_rent_contracts',
+                                contract['id'],
+                                gr ? 'μίσθωση' : 'rental contract',
+                              );
+                          },
+                          itemBuilder: (ctx) => [
+                            PopupMenuItem(
+                              value: 'edit',
+                              child: Text(gr ? 'Επεξεργασία' : 'Edit'),
+                            ),
+                            PopupMenuItem(
+                              value: 'delete',
+                              child: Text(gr ? 'Διαγραφή' : 'Delete'),
+                            ),
+                          ],
+                        )
+                      : null,
                 ),
               ),
             )
@@ -1153,5 +1695,3 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     ),
   );
 }
-
-
