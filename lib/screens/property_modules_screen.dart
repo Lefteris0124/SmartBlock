@@ -716,6 +716,34 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     }
   }
 
+  String? normalizeRentPhone(String value) {
+    var digits = value.trim().replaceAll(RegExp(r'[\s()\-]'), '');
+    if (digits.isEmpty) return null;
+    if (digits.startsWith('00')) digits = '+${digits.substring(2)}';
+    if (!digits.startsWith('+')) {
+      if (digits.startsWith('357') && digits.length == 11) {
+        digits = '+$digits';
+      } else if (RegExp(r'^\d{8}$').hasMatch(digits)) {
+        digits = '+357$digits';
+      }
+    }
+    return RegExp(r'^\+[1-9][0-9]{6,14}$').hasMatch(digits) ? digits : null;
+  }
+
+  String? rentDateError(String? value, {bool optional = false}) {
+    final text = value?.trim() ?? '';
+    if (text.isEmpty) {
+      return optional
+          ? null
+          : (gr ? 'Συμπλήρωσε την ημερομηνία.' : 'Enter a date.');
+    }
+    final parsed = DateTime.tryParse(text);
+    if (parsed == null || parsed.toIso8601String().substring(0, 10) != text) {
+      return gr ? 'Χρησιμοποίησε μορφή YYYY-MM-DD.' : 'Use YYYY-MM-DD format.';
+    }
+    return null;
+  }
+
   Future<void> createRent() async {
     final unit = TextEditingController(),
         tenant = TextEditingController(),
@@ -752,7 +780,15 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
                   controller: phone,
                   decoration: InputDecoration(
                     labelText: gr ? 'Τηλέφωνο' : 'Phone',
+                    hintText: gr ? 'π.χ. 99123456' : 'e.g. 99123456',
                   ),
+                  validator: (value) =>
+                      (value?.trim().isEmpty ?? true) ||
+                          normalizeRentPhone(value!) != null
+                      ? null
+                      : (gr
+                            ? 'Βάλε έγκυρο τηλέφωνο, π.χ. 99123456.'
+                            : 'Enter a valid phone number.'),
                 ),
                 TextFormField(
                   controller: amount,
@@ -760,20 +796,41 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
                   decoration: InputDecoration(
                     labelText: gr ? 'Μηνιαίο ενοίκιο (€)' : 'Monthly rent (€)',
                   ),
-                  validator: required,
+                  validator: (value) {
+                    final parsed = double.tryParse(
+                      (value ?? '').trim().replaceAll(',', '.'),
+                    );
+                    return parsed == null || parsed <= 0
+                        ? (gr
+                              ? 'Βάλε έγκυρο ποσό μεγαλύτερο από 0.'
+                              : 'Enter an amount greater than 0.')
+                        : null;
+                  },
                 ),
                 TextFormField(
                   controller: start,
                   decoration: InputDecoration(
                     labelText: gr ? 'Έναρξη YYYY-MM-DD' : 'Start YYYY-MM-DD',
                   ),
-                  validator: required,
+                  validator: rentDateError,
                 ),
                 TextFormField(
                   controller: end,
                   decoration: InputDecoration(
                     labelText: gr ? 'Λήξη (προαιρετικά)' : 'End (optional)',
                   ),
+                  validator: (value) {
+                    final error = rentDateError(value, optional: true);
+                    if (error != null) return error;
+                    if ((value ?? '').trim().isNotEmpty &&
+                        (start.text.trim().isEmpty ||
+                            value!.trim().compareTo(start.text.trim()) < 0)) {
+                      return gr
+                          ? 'Η λήξη πρέπει να είναι μετά την έναρξη.'
+                          : 'End date must be on or after the start date.';
+                    }
+                    return null;
+                  },
                 ),
               ],
             ),
@@ -800,7 +857,7 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
           'p_property_id': widget.propertyId,
           'p_unit_reference': unit.text.trim(),
           'p_tenant_name': tenant.text.trim(),
-          'p_tenant_phone_e164': phone.text.trim(),
+          'p_tenant_phone_e164': normalizeRentPhone(phone.text),
           'p_monthly_rent': double.parse(amount.text.replaceAll(',', '.')),
           'p_currency': 'EUR',
           'p_start_date': start.text.trim(),
@@ -809,6 +866,7 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
         },
       );
       await refresh();
+      if (mounted) message(gr ? 'Η μίσθωση καταχωρίστηκε.' : 'Rental added.');
     } on PostgrestException catch (e) {
       message(e.message);
     } catch (e) {
@@ -1732,3 +1790,4 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     ),
   );
 }
+
