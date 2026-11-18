@@ -1443,30 +1443,66 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
           action: gr ? 'Νέα χρέωση' : 'Add a charge',
           onPressed: createCharge,
         );
-      return ListView(
-        padding: const EdgeInsets.all(16),
-        children: runs
-            .map(
-              (run) => Card(
+      final runIds = runs.map((run) => run['id'].toString()).toList();
+      return FutureBuilder<List<Map<String, dynamic>>>(
+        future: db
+            .from('property_charge_entries')
+            .select('run_id, amount_due, amount_paid')
+            .inFilter('run_id', runIds)
+            .then((rows) => List<Map<String, dynamic>>.from(rows)),
+        builder: (context, entriesSnapshot) {
+          if (entriesSnapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (entriesSnapshot.hasError) return loadError();
+
+          final totals = <String, (double, double)>{};
+          for (final entry in entriesSnapshot.data ?? const []) {
+            final key = entry['run_id'].toString();
+            final current = totals[key] ?? (0.0, 0.0);
+            totals[key] = (
+              current.$1 + (entry['amount_due'] as num).toDouble(),
+              current.$2 + (entry['amount_paid'] as num).toDouble(),
+            );
+          }
+
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: runs.map((run) {
+              final amounts = totals[run['id'].toString()] ?? (0.0, 0.0);
+              final outstanding = (amounts.$1 - amounts.$2).clamp(
+                0.0,
+                double.infinity,
+              );
+              return Card(
                 child: ListTile(
                   leading: const Icon(Icons.receipt_long_outlined),
                   title: Text(
                     '${run['period_label']} · ${run['total_amount']} ${run['currency']}',
                   ),
-                  subtitle: Text(
-                    '${run['description'] ?? ''} · ${gr ? 'Λήξη' : 'Due'} ${run['due_date']} · ${run['status'] == 'closed' ? (gr ? 'Κλειστή' : 'Closed') : (gr ? 'Ανοιχτή' : 'Open')}',
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${gr ? 'Καταβλήθηκαν' : 'Collected'}: ${amounts.$2.toStringAsFixed(2)} € · ${gr ? 'Οφείλονται' : 'Outstanding'}: ${outstanding.toStringAsFixed(2)} €',
+                      ),
+                      Text(
+                        '${run['description'] ?? ''} · ${gr ? 'Λήξη' : 'Due'} ${run['due_date']} · ${run['status'] == 'closed' ? (gr ? 'Κλειστή' : 'Closed') : (gr ? 'Ανοιχτή' : 'Open')}',
+                      ),
+                    ],
                   ),
                   onTap: () => openCharge(run),
                   trailing: isAdmin
                       ? PopupMenuButton<String>(
                           onSelected: (action) {
                             if (action == 'edit') _editCharge(run);
-                            if (action == 'delete')
+                            if (action == 'delete') {
                               _deleteRow(
                                 'property_charge_runs',
                                 run['id'],
                                 gr ? 'χρέωση κοινοχρήστων' : 'charge',
                               );
+                            }
                           },
                           itemBuilder: (ctx) => [
                             PopupMenuItem(
@@ -1481,9 +1517,10 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
                         )
                       : null,
                 ),
-              ),
-            )
-            .toList(),
+              );
+            }).toList(),
+          );
+        },
       );
     },
   );
