@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 12472)
-Total output lines: 1354
-
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -665,7 +662,65 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
         'notes': notes.text.trim(),
       });
     for (final c in [insurer, number, coverage, premium, expiry, notes]) {
-      c.di…472 tokens truncated…erty_meetings', {
+      c.dispose();
+    }
+  }
+
+  Future<void> _newMeeting() async {
+    final title = TextEditingController(),
+        starts = TextEditingController(
+          text: DateTime.now().toIso8601String().substring(0, 16),
+        ),
+        ends = TextEditingController(),
+        organizer = TextEditingController(),
+        hours = TextEditingController(text: '0'),
+        fee = TextEditingController(text: '0'),
+        attendees = TextEditingController(),
+        minutes = TextEditingController();
+    final ok = await _formDialog(
+      gr ? 'Νέα συνέλευση / πρακτικά' : 'New meeting / minutes',
+      [
+        _field(
+          title,
+          gr ? 'Τίτλος συνέλευσης' : 'Meeting title',
+          validator: _required,
+        ),
+        _field(
+          starts,
+          gr ? 'Έναρξη (ISO)' : 'Start (ISO)',
+          validator: _required,
+        ),
+        _field(ends, gr ? 'Λήξη (προαιρετικά, ISO)' : 'End (optional, ISO)'),
+        _field(
+          organizer,
+          gr ? 'Εκπρόσωπος SmartBlock' : 'SmartBlock representative',
+        ),
+        _field(
+          hours,
+          gr ? 'Ώρες παρουσίας' : 'Representative hours',
+          keyboard: TextInputType.number,
+        ),
+        _field(
+          fee,
+          gr ? 'Συμφωνημένη χρέωση (€)' : 'Agreed service fee (€)',
+          keyboard: const TextInputType.numberWithOptions(decimal: true),
+        ),
+        _field(
+          attendees,
+          gr
+              ? 'Παρόντες (ένα όνομα ανά γραμμή)'
+              : 'Attendees (one name per line)',
+          lines: 3,
+        ),
+        _field(
+          minutes,
+          gr ? 'Πρακτικά και αποφάσεις' : 'Minutes and decisions',
+          lines: 5,
+        ),
+      ],
+    );
+    if (ok)
+      await _insert('property_meetings', {
         'title': title.text.trim(),
         'starts_at': DateTime.parse(starts.text.trim())
             .toUtc()
@@ -1296,4 +1351,3 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
     ),
   );
 }
-
