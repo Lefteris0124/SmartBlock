@@ -87,7 +87,9 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
           .order('handover_date', ascending: false),
       db
           .from('property_charge_entries')
-          .select('amount_paid,property_charge_runs!inner(property_id)')
+          .select(
+            'id,property_owner_id,amount_due,amount_paid,status,property_owners!inner(id,organizations(display_name)),property_charge_runs!inner(property_id,period_label,description,due_date)',
+          )
           .eq('property_charge_runs.property_id', widget.propertyId),
     ]);
     return {
@@ -804,7 +806,10 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
     }
   }
 
-  Future<void> _newArrearsAction() async {
+  Future<void> _newArrearsAction({
+    String? defaultOwnerId,
+    String? chargeEntryId,
+  }) async {
     final owners = List<Map<String, dynamic>>.from(
       await db
           .from('property_owners')
@@ -818,7 +823,9 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
       );
       return;
     }
-    var ownerId = owners.first['id'] as String,
+    var ownerId = owners.any((o) => o['id'] == defaultOwnerId)
+            ? defaultOwnerId!
+            : owners.first['id'] as String,
         stage = 'reminder',
         method = 'email';
     final fee = TextEditingController(text: '0'),
@@ -935,6 +942,7 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
     );
     if (ok == true)
       await _insert('property_arrears_actions', {
+        'charge_entry_id': chargeEntryId,
         'property_owner_id': ownerId,
         'stage': stage,
         'communication_method': method,
@@ -952,6 +960,58 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
     String status,
   ) async {
     try {
+      if (status == 'paid') {
+        var result = await db.rpc(
+          'mark_property_expense_paid',
+          params: {
+            'p_expense_id': expense['id'],
+            'p_confirm_below_reserve': false,
+          },
+        );
+        if (result is Map && result['needs_confirmation'] == true) {
+          if (!mounted) return;
+          final projected = (result['projected_balance'] as num?)?.toDouble();
+          final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: Text(gr ? 'Κάτω από το αποθεματικό' : 'Below reserve'),
+              content: Text(
+                gr
+                    ? 'Η πληρωμή θα αφήσει εκτιμώμενο υπόλοιπο ${_money(projected ?? 0)}, κάτω από το ελάχιστο αποθεματικό. Να εγκριθεί η πληρωμή;'
+                    : 'This payment would leave an estimated balance of ${_money(projected ?? 0)}, below the minimum reserve. Approve the payment?',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: Text(gr ? 'Άκυρο' : 'Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: Text(gr ? 'Έγκριση πληρωμής' : 'Approve payment'),
+                ),
+              ],
+            ),
+          );
+          if (confirmed != true) return;
+          result = await db.rpc(
+            'mark_property_expense_paid',
+            params: {
+              'p_expense_id': expense['id'],
+              'p_confirm_below_reserve': true,
+            },
+          );
+        }
+        if (result is Map && result['paid'] != true) {
+          _message(
+            gr
+                ? 'Δεν έγινε η πληρωμή. Ανανεώστε τα στοιχεία και δοκιμάστε ξανά.'
+                : 'Payment was not recorded. Refresh and try again.',
+          );
+          return;
+        }
+        await _refresh();
+        return;
+      }
       await db
           .from('property_operating_expenses')
           .update({
@@ -990,6 +1050,68 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
   }
 
   String _money(num value) => '€${value.toStringAsFixed(2)}';
+
+  double _entryOutstanding(Map<String, dynamic> row) {
+    final due = (row['amount_due'] as num?)?.toDouble() ?? 0;
+    final paid = (row['amount_paid'] as num?)?.toDouble() ?? 0;
+    final remainder = due - paid;
+    return remainder > 0 ? remainder : 0;
+  }
+
+  Widget _overdueSection(List<Map<String, dynamic>> rows) => Card(
+    clipBehavior: Clip.antiAlias,
+    child: Column(
+      children: [
+        ListTile(
+          leading: const Icon(Icons.warning_amber_outlined),
+          title: Text(
+            gr ? 'Ληξιπρόθεσμα κοινόχρηστα' : 'Overdue common charges',
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+        ),
+        if (rows.isEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                gr
+                    ? 'Δεν υπάρχουν ληξιπρόθεσμες χρεώσεις.'
+                    : 'No overdue charges.',
+              ),
+            ),
+          ),
+        ...rows.map((row) {
+          final run =
+              row['property_charge_runs'] as Map<String, dynamic>? ?? {};
+          final owner = row['property_owners'] as Map<String, dynamic>? ?? {};
+          final organization =
+              owner['organizations'] as Map<String, dynamic>? ?? {};
+          final dueDate = run['due_date'] as String? ?? '';
+          final title =
+              organization['display_name'] as String? ??
+              (gr ? 'Ιδιοκτήτης' : 'Owner');
+          return ListTile(
+            dense: true,
+            title: Text('$title · ${_money(_entryOutstanding(row))}'),
+            subtitle: Text(
+              '${run['period_label'] ?? run['description'] ?? ''} · ${gr ? 'Έληξε' : 'Due'} $dueDate',
+            ),
+            trailing: canManage
+                ? IconButton(
+                    tooltip: gr ? 'Καταγραφή επικοινωνίας' : 'Log follow-up',
+                    icon: const Icon(Icons.mark_email_unread_outlined),
+                    onPressed: () => _newArrearsAction(
+                      defaultOwnerId: row['property_owner_id'] as String?,
+                      chargeEntryId: row['id'] as String?,
+                    ),
+                  )
+                : null,
+          );
+        }),
+      ],
+    ),
+  );
 
   Widget _section(
     String title,
@@ -1127,11 +1249,43 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
           0,
           (sum, row) => sum + ((row['amount'] as num?)?.toDouble() ?? 0),
         );
+    final awaitingApproval = expenses
+        .where((x) => x['status'] == 'awaiting_approval')
+        .fold<double>(
+          0,
+          (sum, row) => sum + ((row['amount'] as num?)?.toDouble() ?? 0),
+        );
+    final receivables = entries.fold<double>(
+      0,
+      (sum, row) => sum + _entryOutstanding(row),
+    );
     final balance = opening + received - paidExpenses;
     final minimum =
         (settings?['minimum_operating_reserve'] as num?)?.toDouble() ?? 0;
-    final below = balance - committed < minimum;
+    final projectedBalance =
+        balance + receivables - committed - awaitingApproval;
+    final below = balance - committed - awaitingApproval < minimum;
     final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final overdueEntries =
+        entries.where((row) {
+          final run =
+              row['property_charge_runs'] as Map<String, dynamic>? ?? {};
+          final dueDate = DateTime.tryParse(run['due_date'] as String? ?? '');
+          return _entryOutstanding(row) > 0 &&
+              dueDate != null &&
+              dueDate.isBefore(today);
+        }).toList()..sort((a, b) {
+          final aRun = a['property_charge_runs'] as Map<String, dynamic>? ?? {};
+          final bRun = b['property_charge_runs'] as Map<String, dynamic>? ?? {};
+          return (aRun['due_date'] as String? ?? '').compareTo(
+            bRun['due_date'] as String? ?? '',
+          );
+        });
+    final overdueAmount = overdueEntries.fold<double>(
+      0,
+      (sum, row) => sum + _entryOutstanding(row),
+    );
     final alerts = <String>[];
     for (final contract in d['contracts'] as List<Map<String, dynamic>>) {
       final rawEnd = contract['ends_on'] as String?;
@@ -1214,6 +1368,18 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
                     '${gr ? 'Εγκεκριμένες υποχρεώσεις' : 'Approved commitments'}: ${_money(committed)}',
                   ),
                   Text(
+                    '${gr ? 'Εκκρεμείς προς έγκριση' : 'Awaiting approval'}: ${_money(awaitingApproval)}',
+                  ),
+                  Text(
+                    '${gr ? 'Αναμενόμενες εισπράξεις' : 'Expected receivables'}: ${_money(receivables)}',
+                  ),
+                  Text(
+                    '${gr ? 'Ληξιπρόθεσμα' : 'Overdue'}: ${_money(overdueAmount)}',
+                  ),
+                  Text(
+                    '${gr ? 'Προβολή μετά από γνωστά ποσά' : 'Projected after known items'}: ${_money(projectedBalance)}',
+                  ),
+                  Text(
                     '${gr ? 'Ελάχιστο αποθεματικό' : 'Minimum reserve'}: ${_money(minimum)}',
                   ),
                   if (below)
@@ -1221,8 +1387,8 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
                       padding: const EdgeInsets.only(top: 6),
                       child: Text(
                         gr
-                            ? 'Προσοχή: οι εγκεκριμένες υποχρεώσεις θα μειώσουν το ταμείο κάτω από το όριο.'
-                            : 'Warning: approved commitments would reduce funds below the reserve.',
+                            ? 'Προσοχή: οι γνωστές υποχρεώσεις μπορούν να μειώσουν το ταμείο κάτω από το όριο.'
+                            : 'Warning: known obligations may reduce funds below the reserve.',
                       ),
                     ),
                   if (canManage)
@@ -1240,6 +1406,7 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
               ),
             ),
           ),
+          _overdueSection(overdueEntries),
           if (!canManage)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
