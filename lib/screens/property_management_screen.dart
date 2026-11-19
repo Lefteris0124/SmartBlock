@@ -86,6 +86,11 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
           .eq('property_id', widget.propertyId)
           .order('expires_on'),
       db
+          .from('property_insurance_claims')
+          .select('*,property_insurance_policies(insurer,policy_number)')
+          .eq('property_id', widget.propertyId)
+          .order('reported_on', ascending: false),
+      db
           .from('property_meetings')
           .select()
           .eq('property_id', widget.propertyId)
@@ -111,9 +116,10 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
       'settings': values[5] as Map<String, dynamic>?,
       'arrears': List<Map<String, dynamic>>.from(values[6]),
       'insurance': List<Map<String, dynamic>>.from(values[7]),
-      'meetings': List<Map<String, dynamic>>.from(values[8]),
-      'handovers': List<Map<String, dynamic>>.from(values[9]),
-      'charge_entries': List<Map<String, dynamic>>.from(values[10]),
+      'claims': List<Map<String, dynamic>>.from(values[8]),
+      'meetings': List<Map<String, dynamic>>.from(values[9]),
+      'handovers': List<Map<String, dynamic>>.from(values[10]),
+      'charge_entries': List<Map<String, dynamic>>.from(values[11]),
     };
   }
 
@@ -1068,6 +1074,163 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
     }
   }
 
+  Future<void> _newInsuranceClaim() async {
+    final policies = List<Map<String, dynamic>>.from(
+      await db
+          .from('property_insurance_policies')
+          .select('id,insurer,policy_number')
+          .eq('property_id', widget.propertyId)
+          .order('expires_on'),
+    );
+    if (!mounted) return;
+    if (policies.isEmpty) {
+      _message(
+        gr
+            ? 'Καταχώρισε πρώτα ένα ασφαλιστήριο.'
+            : 'Add an insurance policy first.',
+      );
+      return;
+    }
+    var policyId = policies.first['id'] as String;
+    final reference = TextEditingController(),
+        incidentDate = TextEditingController(
+          text: DateTime.now().toIso8601String().substring(0, 10),
+        ),
+        description = TextEditingController(),
+        amount = TextEditingController(),
+        notes = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: Text(gr ? 'Νέα ασφαλιστική απαίτηση' : 'New insurance claim'),
+          content: SizedBox(
+            width: 460,
+            child: Form(
+              key: _formKey,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    DropdownButtonFormField<String>(
+                      value: policyId,
+                      decoration: InputDecoration(
+                        labelText: gr ? 'Ασφαλιστήριο' : 'Insurance policy',
+                      ),
+                      items: policies
+                          .map(
+                            (policy) => DropdownMenuItem(
+                              value: policy['id'] as String,
+                              child: Text(
+                                '${policy['insurer']} · ${policy['policy_number']}',
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        if (value != null) setDialog(() => policyId = value);
+                      },
+                    ),
+                    _field(
+                      reference,
+                      gr ? 'Αριθμός απαίτησης' : 'Claim reference',
+                    ),
+                    _field(
+                      incidentDate,
+                      gr
+                          ? 'Ημερομηνία περιστατικού (YYYY-MM-DD)'
+                          : 'Incident date (YYYY-MM-DD)',
+                      validator: _dateValidator,
+                    ),
+                    _field(
+                      description,
+                      gr ? 'Περιγραφή περιστατικού' : 'Incident description',
+                      validator: _required,
+                      lines: 4,
+                    ),
+                    _field(
+                      amount,
+                      gr ? 'Αιτούμενο ποσό (€)' : 'Claimed amount (€)',
+                      keyboard: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                    ),
+                    _field(notes, gr ? 'Σημειώσεις' : 'Notes', lines: 2),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(gr ? 'Άκυρο' : 'Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => _formKey.currentState!.validate()
+                  ? Navigator.pop(ctx, true)
+                  : null,
+              child: Text(gr ? 'Καταχώριση' : 'Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (ok == true) {
+      await _insert('property_insurance_claims', {
+        'policy_id': policyId,
+        'claim_reference': reference.text.trim(),
+        'incident_date': incidentDate.text.trim(),
+        'description': description.text.trim(),
+        'claimed_amount': amount.text.trim().isEmpty
+            ? null
+            : double.tryParse(amount.text.replaceAll(',', '.')),
+        'notes': notes.text.trim(),
+      });
+    }
+    for (final c in [reference, incidentDate, description, amount, notes]) {
+      c.dispose();
+    }
+  }
+
+  Future<void> _reviewInsuranceClaim(
+    Map<String, dynamic> claim,
+    String status,
+  ) async {
+    double? approvedAmount;
+    if (status == 'accepted') {
+      final amount = TextEditingController(
+        text: '${claim['claimed_amount'] ?? ''}',
+      );
+      final ok = await _formDialog(gr ? 'Έγκριση απαίτησης' : 'Approve claim', [
+        _field(
+          amount,
+          gr ? 'Εγκεκριμένο ποσό (€)' : 'Approved amount (€)',
+          validator: _required,
+          keyboard: const TextInputType.numberWithOptions(decimal: true),
+        ),
+      ]);
+      if (!ok) {
+        amount.dispose();
+        return;
+      }
+      approvedAmount = double.tryParse(amount.text.replaceAll(',', '.'));
+      amount.dispose();
+    }
+    try {
+      await db
+          .from('property_insurance_claims')
+          .update({
+            'status': status,
+            if (status == 'accepted') 'approved_amount': approvedAmount,
+          })
+          .eq('id', claim['id']);
+      await _refresh();
+    } on PostgrestException catch (e) {
+      _message(e.message);
+    }
+  }
+
   Future<void> _newMeeting() async {
     final title = TextEditingController(),
         starts = TextEditingController(
@@ -1594,6 +1757,16 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
             final quote = row['quote_amount'] as num?;
             subtitle =
                 '${row['status']}${quote == null ? '' : ' · ${_money(quote)}'}${(row['supplier'] as String? ?? '').isEmpty ? '' : ' · ${row['supplier']}'}${(row['description'] as String? ?? '').isEmpty ? '' : ' · ${row['description']}'}';
+          } else if (type == 'claim') {
+            final policy =
+                row['property_insurance_policies'] as Map<String, dynamic>? ??
+                {};
+            final amount =
+                row['approved_amount'] as num? ?? row['claimed_amount'] as num?;
+            titleText =
+                '${row['claim_reference'] == '' ? (gr ? 'Απαίτηση' : 'Claim') : row['claim_reference']} · ${policy['policy_number'] ?? ''}';
+            subtitle =
+                '${row['reported_on']} · ${row['status']}${amount == null ? '' : ' · ${_money(amount)}'} · ${row['description']}';
           } else {
             final owner = row['property_owners'] as Map<String, dynamic>? ?? {};
             final org = owner['organizations'] as Map<String, dynamic>? ?? {};
@@ -1681,6 +1854,8 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
                   )
                 : canManage && type == 'service_request'
                 ? _serviceRequestAction(row)
+                : canManage && type == 'claim'
+                ? _insuranceClaimAction(row)
                 : null,
           );
         }),
@@ -1727,6 +1902,40 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
       );
     }
     return null;
+  }
+
+  Widget? _insuranceClaimAction(Map<String, dynamic> claim) {
+    final status = claim['status'];
+    final List<PopupMenuEntry<String>> items = switch (status) {
+      'reported' => [
+        PopupMenuItem(
+          value: 'under_review',
+          child: Text(gr ? 'Σε εξέταση' : 'Under review'),
+        ),
+      ],
+      'under_review' => [
+        PopupMenuItem(
+          value: 'accepted',
+          child: Text(gr ? 'Έγκριση' : 'Accept'),
+        ),
+        PopupMenuItem(
+          value: 'rejected',
+          child: Text(gr ? 'Απόρριψη' : 'Reject'),
+        ),
+      ],
+      'accepted' => [
+        PopupMenuItem(value: 'paid', child: Text(gr ? 'Πληρώθηκε' : 'Paid')),
+      ],
+      'paid' => [
+        PopupMenuItem(value: 'closed', child: Text(gr ? 'Κλείσιμο' : 'Close')),
+      ],
+      _ => [],
+    };
+    if (items.isEmpty) return null;
+    return PopupMenuButton<String>(
+      onSelected: (value) => _reviewInsuranceClaim(claim, value),
+      itemBuilder: (_) => items,
+    );
   }
 
   Widget _body(Map<String, dynamic> d) {
@@ -1990,6 +2199,13 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
             d['insurance'],
             _newInsurance,
             'insurance',
+          ),
+          _section(
+            gr ? 'Ασφαλιστικές απαιτήσεις' : 'Insurance claims',
+            Icons.assignment_late_outlined,
+            d['claims'],
+            _newInsuranceClaim,
+            'claim',
           ),
           _section(
             gr ? 'Συνελεύσεις και πρακτικά' : 'Meetings and minutes',
