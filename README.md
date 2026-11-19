@@ -18,6 +18,8 @@
 - Insurance claims are linked to a policy and tracked from report through review, decision, payout, and closure.
 - Monthly, quarterly, semiannual, annual, or custom common-charge cycles, with a property finance overview.
 - Common charges can be allocated by ownership share, declared floor area, or apartment count; each run records the method used.
+- Private PDF and image attachments are supported for management records; meeting files are shared with property members, while arrears, expenses, claims, and handover files stay manager-only.
+- In-app reminders cover contract notice/expiry, insurance expiry, upcoming meetings, and charges due within seven days; owner-specific debt follow-ups are manager-only.
 
 ## Run the Flutter app
 

@@ -39,6 +39,7 @@ dependencies:
   url_launcher: ^6.3.3
   flutter_web_plugins:
     sdk: flutter
+  file_picker: ^13.4.0
 
 dev_dependencies:
   flutter_test:

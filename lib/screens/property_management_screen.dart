@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class PropertyManagementScreen extends StatefulWidget {
   const PropertyManagementScreen({
@@ -75,9 +77,7 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
           .maybeSingle(),
       db
           .from('property_arrears_actions')
-          .select(
-            'id,stage,communication_method,occurred_at,agreed_fee,fee_basis,notes,property_owners(organizations(display_name))',
-          )
+          .select('*,property_owners(organizations(display_name))')
           .eq('property_id', widget.propertyId)
           .order('occurred_at', ascending: false),
       db
@@ -128,6 +128,132 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
     try {
       await data;
     } catch (_) {}
+  }
+
+  String? _documentColumn(String type) => switch (type) {
+    'contract' || 'contract_amendment' => 'source_document_path',
+    'expense' => 'document_path',
+    'insurance' || 'claim' => 'document_path',
+    'arrears' => 'letter_document_path',
+    'service_request' => 'quote_document_path',
+    'meeting' || 'handover' => 'document_paths',
+    _ => null,
+  };
+
+  bool _documentListType(String type) =>
+      type == 'meeting' || type == 'handover';
+
+  List<String> _documentPaths(Map<String, dynamic> row, String type) {
+    final column = _documentColumn(type);
+    if (column == null) return const [];
+    final value = row[column];
+    if (_documentListType(type)) {
+      if (value is List) return value.whereType<String>().toList();
+      return const [];
+    }
+    return value is String && value.isNotEmpty ? [value] : const [];
+  }
+
+  String _documentFolder(String type) =>
+      {
+        'expense',
+        'claim',
+        'arrears',
+        'handover',
+        'service_request',
+      }.contains(type)
+      ? 'restricted'
+      : 'shared';
+
+  Future<void> _attachDocument(Map<String, dynamic> row, String type) async {
+    try {
+      final file = await FilePicker.pickFile(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
+      );
+      if (file == null) return;
+      final size = await file.length();
+      if (size == null || size > 15 * 1024 * 1024) {
+        _message(
+          gr
+              ? 'Το αρχείο πρέπει να είναι έως 15 MB.'
+              : 'The file must be 15 MB or smaller.',
+        );
+        return;
+      }
+      final extension = (file.extension ?? '').toLowerCase();
+      final mime = switch (extension) {
+        'pdf' => 'application/pdf',
+        'jpg' || 'jpeg' => 'image/jpeg',
+        'png' => 'image/png',
+        'webp' => 'image/webp',
+        _ => null,
+      };
+      if (mime == null) return;
+      final bytes = await file.readAsBytes();
+      final safeName = file.name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+      final path =
+          '${widget.propertyId}/${_documentFolder(type)}/'
+          '${DateTime.now().microsecondsSinceEpoch}_$safeName';
+      final bucket = db.storage.from('property-management-documents');
+      await bucket.uploadBinary(
+        path,
+        bytes,
+        fileOptions: FileOptions(contentType: mime),
+      );
+      try {
+        final column = _documentColumn(type)!;
+        if (_documentListType(type)) {
+          final paths = _documentPaths(row, type)..add(path);
+          final table = type == 'meeting'
+              ? 'property_meetings'
+              : 'property_handover_records';
+          await db.from(table).update({column: paths}).eq('id', row['id']);
+        } else {
+          final table = switch (type) {
+            'contract' => 'property_management_contracts',
+            'contract_amendment' => 'property_management_contract_amendments',
+            'expense' => 'property_operating_expenses',
+            'insurance' => 'property_insurance_policies',
+            'claim' => 'property_insurance_claims',
+            'arrears' => 'property_arrears_actions',
+            'service_request' => 'property_service_requests',
+            _ => throw StateError('Unsupported document record'),
+          };
+          final oldPaths = _documentPaths(row, type);
+          await db.from(table).update({column: path}).eq('id', row['id']);
+          if (oldPaths.isNotEmpty) {
+            try {
+              await bucket.remove(oldPaths);
+            } catch (_) {}
+          }
+        }
+      } catch (_) {
+        await bucket.remove([path]);
+        rethrow;
+      }
+      _message(gr ? 'Το έγγραφο αποθηκεύτηκε.' : 'Document saved.');
+      await _refresh();
+    } catch (error) {
+      _message(
+        '${gr ? 'Δεν ήταν δυνατή η επισύναψη' : 'Could not attach document'}: $error',
+      );
+    }
+  }
+
+  Future<void> _openDocument(String path) async {
+    try {
+      final url = await db.storage
+          .from('property-management-documents')
+          .createSignedUrl(path, 300);
+      if (!await launchUrl(Uri.parse(url), mode: LaunchMode.platformDefault)) {
+        throw StateError('Could not open document');
+      }
+    } catch (error) {
+      _message(
+        '${gr ? 'Δεν ήταν δυνατή η προβολή του εγγράφου' : 'Could not open document'}: $error',
+      );
+    }
   }
 
   void _message(String text) {
@@ -1676,6 +1802,78 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
     ),
   );
 
+  Widget? _sectionStatusAction(Map<String, dynamic> row, String type) {
+    if (!canManage) return null;
+    if (type == 'expense' && row['status'] != 'paid') {
+      return PopupMenuButton<String>(
+        onSelected: (value) => _setExpenseStatus(row, value),
+        itemBuilder: (_) => [
+          if (row['status'] == 'awaiting_approval')
+            PopupMenuItem(
+              value: 'approved',
+              child: Text(gr ? 'Έγκριση' : 'Approve'),
+            ),
+          if (row['status'] == 'approved')
+            PopupMenuItem(
+              value: 'paid',
+              child: Text(gr ? 'Σήμανση ως πληρωμένο' : 'Mark paid'),
+            ),
+          PopupMenuItem(
+            value: 'rejected',
+            child: Text(gr ? 'Απόρριψη' : 'Reject'),
+          ),
+        ],
+      );
+    }
+    if (type == 'handover' && row['status'] == 'awaiting_acceptance') {
+      return IconButton(
+        tooltip: gr ? 'Αποδοχή παράδοσης' : 'Accept handover',
+        onPressed: () => _acceptHandover(row),
+        icon: const Icon(Icons.task_alt),
+      );
+    }
+    if (type == 'contract' && ['active', 'draft'].contains(row['status'])) {
+      return PopupMenuButton<String>(
+        onSelected: (value) => _setContractStatus(row, value),
+        itemBuilder: (_) => [
+          if (row['status'] == 'draft')
+            PopupMenuItem(
+              value: 'active',
+              child: Text(gr ? 'Ενεργοποίηση' : 'Activate'),
+            ),
+          if (row['status'] == 'active') ...[
+            PopupMenuItem(
+              value: 'terminated',
+              child: Text(gr ? 'Τερματισμός' : 'Terminate'),
+            ),
+            PopupMenuItem(
+              value: 'expired',
+              child: Text(gr ? 'Λήξη σύμβασης' : 'Mark expired'),
+            ),
+          ],
+        ],
+      );
+    }
+    if (type == 'contract_amendment' && row['approval_status'] == 'pending') {
+      return PopupMenuButton<String>(
+        onSelected: (value) => _reviewAmendment(row, value),
+        itemBuilder: (_) => [
+          PopupMenuItem(
+            value: 'approved',
+            child: Text(gr ? 'Έγκριση' : 'Approve'),
+          ),
+          PopupMenuItem(
+            value: 'rejected',
+            child: Text(gr ? 'Απόρριψη' : 'Reject'),
+          ),
+        ],
+      );
+    }
+    if (type == 'service_request') return _serviceRequestAction(row);
+    if (type == 'claim') return _insuranceClaimAction(row);
+    return null;
+  }
+
   Widget _section(
     String title,
     IconData icon,
@@ -1775,6 +1973,13 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
             subtitle =
                 '${row['occurred_at']} · ${row['communication_method']} · ${row['notes']}';
           }
+          final statusAction = _sectionStatusAction(row, type);
+          final documentPaths = _documentPaths(row, type);
+          final readableDocumentPaths =
+              canManage || _documentFolder(type) == 'shared'
+              ? documentPaths
+              : const <String>[];
+          final showAttachment = _documentColumn(type) != null;
           return ListTile(
             dense: true,
             title: Text(titleText),
@@ -1783,79 +1988,28 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
-            trailing: canManage && type == 'expense' && row['status'] != 'paid'
-                ? PopupMenuButton<String>(
-                    onSelected: (v) => _setExpenseStatus(row, v),
-                    itemBuilder: (_) => [
-                      if (row['status'] == 'awaiting_approval')
-                        PopupMenuItem(
-                          value: 'approved',
-                          child: Text(gr ? 'Έγκριση' : 'Approve'),
+            trailing: canManage || readableDocumentPaths.isNotEmpty
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (readableDocumentPaths.isNotEmpty)
+                        IconButton(
+                          tooltip: gr ? 'Προβολή εγγράφων' : 'Open documents',
+                          onPressed: () =>
+                              _openDocument(readableDocumentPaths.last),
+                          icon: const Icon(Icons.attach_file),
                         ),
-                      if (row['status'] == 'approved')
-                        PopupMenuItem(
-                          value: 'paid',
-                          child: Text(
-                            gr ? 'Σήμανση ως πληρωμένο' : 'Mark paid',
-                          ),
+                      if (canManage && showAttachment)
+                        IconButton(
+                          tooltip: gr ? 'Επισύναψη αρχείου' : 'Attach file',
+                          onPressed: busy
+                              ? null
+                              : () => _attachDocument(row, type),
+                          icon: const Icon(Icons.upload_file_outlined),
                         ),
-                      PopupMenuItem(
-                        value: 'rejected',
-                        child: Text(gr ? 'Απόρριψη' : 'Reject'),
-                      ),
+                      if (statusAction != null) statusAction,
                     ],
                   )
-                : canManage &&
-                      type == 'handover' &&
-                      row['status'] == 'awaiting_acceptance'
-                ? IconButton(
-                    tooltip: gr ? 'Αποδοχή παράδοσης' : 'Accept handover',
-                    onPressed: () => _acceptHandover(row),
-                    icon: const Icon(Icons.task_alt),
-                  )
-                : canManage &&
-                      type == 'contract' &&
-                      ['active', 'draft'].contains(row['status'])
-                ? PopupMenuButton<String>(
-                    onSelected: (v) => _setContractStatus(row, v),
-                    itemBuilder: (_) => [
-                      if (row['status'] == 'draft')
-                        PopupMenuItem(
-                          value: 'active',
-                          child: Text(gr ? 'Ενεργοποίηση' : 'Activate'),
-                        ),
-                      if (row['status'] == 'active') ...[
-                        PopupMenuItem(
-                          value: 'terminated',
-                          child: Text(gr ? 'Τερματισμός' : 'Terminate'),
-                        ),
-                        PopupMenuItem(
-                          value: 'expired',
-                          child: Text(gr ? 'Λήξη σύμβασης' : 'Mark expired'),
-                        ),
-                      ],
-                    ],
-                  )
-                : canManage &&
-                      type == 'contract_amendment' &&
-                      row['approval_status'] == 'pending'
-                ? PopupMenuButton<String>(
-                    onSelected: (v) => _reviewAmendment(row, v),
-                    itemBuilder: (_) => [
-                      PopupMenuItem(
-                        value: 'approved',
-                        child: Text(gr ? 'Έγκριση' : 'Approve'),
-                      ),
-                      PopupMenuItem(
-                        value: 'rejected',
-                        child: Text(gr ? 'Απόρριψη' : 'Reject'),
-                      ),
-                    ],
-                  )
-                : canManage && type == 'service_request'
-                ? _serviceRequestAction(row)
-                : canManage && type == 'claim'
-                ? _insuranceClaimAction(row)
                 : null,
           );
         }),
@@ -2022,7 +2176,10 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
       final noticeMonths =
           (contract['notice_period_months'] as num?)?.toInt() ?? 0;
       final noticeAt = DateTime(end.year, end.month - noticeMonths, end.day);
-      if (!now.isBefore(noticeAt) && !now.isAfter(end)) {
+      final reminderAt = noticeMonths > 0
+          ? noticeAt
+          : end.subtract(const Duration(days: 30));
+      if (!now.isAfter(end) && !now.isBefore(reminderAt)) {
         alerts.add(
           gr
               ? 'Η σύμβαση ${contract['provider_name']} λήγει στις $rawEnd. Έλεγξε την προθεσμία ειδοποίησης.'
@@ -2033,13 +2190,49 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
     for (final policy in d['insurance'] as List<Map<String, dynamic>>) {
       final expiry = DateTime.tryParse(policy['expires_on'] as String? ?? '');
       if (expiry == null) continue;
-      if (!expiry.isBefore(now) && expiry.difference(now).inDays <= 30) {
+      final daysLeft = expiry.difference(today).inDays;
+      if (daysLeft < 0 || daysLeft <= 30) {
         alerts.add(
           gr
-              ? 'Το ασφαλιστήριο ${policy['policy_number']} λήγει στις ${policy['expires_on']}.'
-              : 'Insurance policy ${policy['policy_number']} expires on ${policy['expires_on']}.',
+              ? (daysLeft < 0
+                    ? 'Το ασφαλιστήριο ${policy['policy_number']} έληξε στις ${policy['expires_on']}.'
+                    : 'Το ασφαλιστήριο ${policy['policy_number']} λήγει στις ${policy['expires_on']}.')
+              : (daysLeft < 0
+                    ? 'Insurance policy ${policy['policy_number']} expired on ${policy['expires_on']}.'
+                    : 'Insurance policy ${policy['policy_number']} expires on ${policy['expires_on']}.'),
         );
       }
+    }
+    if (canManage) {
+      final dueSoonCount = entries.where((row) {
+        if (_entryOutstanding(row) <= 0) return false;
+        final run = row['property_charge_runs'] as Map<String, dynamic>? ?? {};
+        final due = DateTime.tryParse(run['due_date'] as String? ?? '');
+        return due != null &&
+            !due.isBefore(today) &&
+            due.isBefore(today.add(const Duration(days: 8)));
+      }).length;
+      if (dueSoonCount > 0) {
+        alerts.add(
+          gr
+              ? '${dueSoonCount} χρεώσεις κοινοχρήστων λήγουν μέσα στις επόμενες 7 ημέρες.'
+              : '${dueSoonCount} common charges are due within the next 7 days.',
+        );
+      }
+    }
+    for (final meeting in d['meetings'] as List<Map<String, dynamic>>) {
+      if (meeting['status'] != 'scheduled') continue;
+      final starts = DateTime.tryParse(meeting['starts_at'] as String? ?? '');
+      if (starts == null ||
+          starts.isBefore(now) ||
+          starts.isAfter(now.add(const Duration(days: 7)))) {
+        continue;
+      }
+      alerts.add(
+        gr
+            ? 'Η συνέλευση «${meeting['title']}» είναι προγραμματισμένη για ${meeting['starts_at']}.'
+            : 'Meeting “${meeting['title']}” is scheduled for ${meeting['starts_at']}.',
+      );
     }
     return RefreshIndicator(
       onRefresh: _refresh,
@@ -2136,7 +2329,7 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
               ),
             ),
           ),
-          _overdueSection(overdueEntries),
+          if (canManage) _overdueSection(overdueEntries),
           if (!canManage)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
