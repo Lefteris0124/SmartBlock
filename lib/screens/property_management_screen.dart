@@ -59,6 +59,11 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
           .eq('property_id', widget.propertyId)
           .order('active', ascending: false),
       db
+          .from('property_service_requests')
+          .select('*,property_management_services(title)')
+          .eq('property_id', widget.propertyId)
+          .order('created_at', ascending: false),
+      db
           .from('property_operating_expenses')
           .select()
           .eq('property_id', widget.propertyId)
@@ -101,13 +106,14 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
       'contracts': List<Map<String, dynamic>>.from(values[0]),
       'amendments': List<Map<String, dynamic>>.from(values[1]),
       'services': List<Map<String, dynamic>>.from(values[2]),
-      'expenses': List<Map<String, dynamic>>.from(values[3]),
-      'settings': values[4] as Map<String, dynamic>?,
-      'arrears': List<Map<String, dynamic>>.from(values[5]),
-      'insurance': List<Map<String, dynamic>>.from(values[6]),
-      'meetings': List<Map<String, dynamic>>.from(values[7]),
-      'handovers': List<Map<String, dynamic>>.from(values[8]),
-      'charge_entries': List<Map<String, dynamic>>.from(values[9]),
+      'service_requests': List<Map<String, dynamic>>.from(values[3]),
+      'expenses': List<Map<String, dynamic>>.from(values[4]),
+      'settings': values[5] as Map<String, dynamic>?,
+      'arrears': List<Map<String, dynamic>>.from(values[6]),
+      'insurance': List<Map<String, dynamic>>.from(values[7]),
+      'meetings': List<Map<String, dynamic>>.from(values[8]),
+      'handovers': List<Map<String, dynamic>>.from(values[9]),
+      'charge_entries': List<Map<String, dynamic>>.from(values[10]),
     };
   }
 
@@ -678,6 +684,215 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
     title.dispose();
     desc.dispose();
     fee.dispose();
+  }
+
+  Future<void> _newServiceRequest() async {
+    final services = List<Map<String, dynamic>>.from(
+      await db
+          .from('property_management_services')
+          .select('id,title')
+          .eq('property_id', widget.propertyId)
+          .eq('active', true)
+          .order('title'),
+    );
+    if (!mounted) return;
+    var serviceId = '';
+    final title = TextEditingController(),
+        description = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: Text(gr ? 'Νέο αίτημα υπηρεσίας' : 'New service request'),
+          content: SizedBox(
+            width: 460,
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (services.isNotEmpty)
+                    DropdownButtonFormField<String>(
+                      value: serviceId,
+                      decoration: InputDecoration(
+                        labelText: gr
+                            ? 'Υπηρεσία καταλόγου (προαιρετικά)'
+                            : 'Catalogue service (optional)',
+                      ),
+                      items: [
+                        DropdownMenuItem(
+                          value: '',
+                          child: Text(gr ? 'Άλλη υπηρεσία' : 'Other service'),
+                        ),
+                        ...services.map(
+                          (service) => DropdownMenuItem(
+                            value: service['id'] as String,
+                            child: Text(service['title'] as String),
+                          ),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setDialog(() {
+                          serviceId = value;
+                          if (value.isNotEmpty) {
+                            title.text =
+                                services.firstWhere(
+                                      (service) => service['id'] == value,
+                                    )['title']
+                                    as String;
+                          }
+                        });
+                      },
+                    ),
+                  _field(
+                    title,
+                    gr ? 'Τι χρειάζεται;' : 'What do you need?',
+                    validator: _required,
+                  ),
+                  _field(
+                    description,
+                    gr ? 'Περιγραφή / λεπτομέρειες' : 'Description / details',
+                    lines: 4,
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      gr
+                          ? 'Το αίτημα θα λάβει προσφορά και θα χρειαστεί έγκριση πριν ξεκινήσει η εργασία.'
+                          : 'The request will receive a quote and require approval before work starts.',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(gr ? 'Άκυρο' : 'Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => _formKey.currentState!.validate()
+                  ? Navigator.pop(ctx, true)
+                  : null,
+              child: Text(gr ? 'Αποστολή αιτήματος' : 'Submit request'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (ok == true) {
+      await _insert('property_service_requests', {
+        'service_id': serviceId.isEmpty ? null : serviceId,
+        'title': title.text.trim(),
+        'description': description.text.trim(),
+      });
+    }
+    title.dispose();
+    description.dispose();
+  }
+
+  Future<void> _quoteServiceRequest(Map<String, dynamic> request) async {
+    final amount = TextEditingController(),
+        supplier = TextEditingController(),
+        notes = TextEditingController();
+    final ok = await _formDialog(gr ? 'Καταχώριση προσφοράς' : 'Add a quote', [
+      _field(
+        amount,
+        gr ? 'Ποσό προσφοράς (€)' : 'Quote amount (€)',
+        validator: _required,
+        keyboard: const TextInputType.numberWithOptions(decimal: true),
+      ),
+      _field(supplier, gr ? 'Προμηθευτής' : 'Supplier'),
+      _field(
+        notes,
+        gr ? 'Όροι / σημειώσεις προσφοράς' : 'Quote terms / notes',
+        lines: 3,
+      ),
+    ]);
+    if (ok) {
+      await _transitionServiceRequest(
+        request,
+        'quoted',
+        quoteAmount: double.tryParse(amount.text.replaceAll(',', '.')),
+        supplier: supplier.text.trim(),
+        quoteNotes: notes.text.trim(),
+      );
+    }
+    amount.dispose();
+    supplier.dispose();
+    notes.dispose();
+  }
+
+  Future<void> _transitionServiceRequest(
+    Map<String, dynamic> request,
+    String nextStatus, {
+    double? quoteAmount,
+    String? supplier,
+    String? quoteNotes,
+    bool confirmBelowReserve = false,
+  }) async {
+    try {
+      var result = await db.rpc(
+        'transition_property_service_request',
+        params: {
+          'p_request_id': request['id'],
+          'p_next_status': nextStatus,
+          'p_quote_amount': quoteAmount,
+          'p_quote_notes': quoteNotes,
+          'p_supplier': supplier,
+          'p_confirm_below_reserve': confirmBelowReserve,
+        },
+      );
+      if (result is Map && result['needs_confirmation'] == true) {
+        if (!mounted) return;
+        final projected =
+            (result['projected_balance'] as num?)?.toDouble() ?? 0;
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: Text(gr ? 'Κάτω από το αποθεματικό' : 'Below reserve'),
+            content: Text(
+              gr
+                  ? 'Η έγκριση της προσφοράς θα αφήσει εκτιμώμενο υπόλοιπο ${_money(projected)}. Να εγκριθεί παρ’ όλα αυτά;'
+                  : 'Approving this quote would leave estimated funds of ${_money(projected)}. Approve it anyway?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text(gr ? 'Άκυρο' : 'Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(gr ? 'Έγκριση' : 'Approve'),
+              ),
+            ],
+          ),
+        );
+        if (confirmed != true) return;
+        result = await db.rpc(
+          'transition_property_service_request',
+          params: {
+            'p_request_id': request['id'],
+            'p_next_status': nextStatus,
+            'p_quote_amount': quoteAmount,
+            'p_quote_notes': quoteNotes,
+            'p_supplier': supplier,
+            'p_confirm_below_reserve': true,
+          },
+        );
+      }
+      if (result is Map && result['updated'] != true) {
+        _message(
+          gr ? 'Δεν έγινε η αλλαγή κατάστασης.' : 'The status was not changed.',
+        );
+        return;
+      }
+      await _refresh();
+    } on PostgrestException catch (e) {
+      _message(e.message);
+    }
   }
 
   Future<void> _newExpense() async {
@@ -1303,8 +1518,9 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
     IconData icon,
     List<Map<String, dynamic>> rows,
     VoidCallback add,
-    String type,
-  ) => Card(
+    String type, {
+    bool allowMemberRequests = false,
+  }) => Card(
     clipBehavior: Clip.antiAlias,
     child: Column(
       children: [
@@ -1314,7 +1530,7 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
             title,
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
-          trailing: canManage
+          trailing: canManage || allowMemberRequests
               ? IconButton(
                   tooltip: gr ? 'Νέα καταχώριση' : 'Add record',
                   onPressed: busy ? null : add,
@@ -1368,6 +1584,16 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
             titleText = '${row['title']} · ${contract['provider_name'] ?? ''}';
             subtitle =
                 '${row['effective_on']} · ${row['approval_status']}${newFee == null ? '' : ' · ${_money(newFee)}/${gr ? 'μήνα' : 'month'}'}';
+          } else if (type == 'service_request') {
+            final service =
+                row['property_management_services'] as Map<String, dynamic>? ??
+                {};
+            final serviceTitle = service['title'] as String?;
+            titleText =
+                '${row['title']}${serviceTitle == null ? '' : ' · $serviceTitle'}';
+            final quote = row['quote_amount'] as num?;
+            subtitle =
+                '${row['status']}${quote == null ? '' : ' · ${_money(quote)}'}${(row['supplier'] as String? ?? '').isEmpty ? '' : ' · ${row['supplier']}'}${(row['description'] as String? ?? '').isEmpty ? '' : ' · ${row['description']}'}';
           } else {
             final owner = row['property_owners'] as Map<String, dynamic>? ?? {};
             final org = owner['organizations'] as Map<String, dynamic>? ?? {};
@@ -1453,6 +1679,8 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
                       ),
                     ],
                   )
+                : canManage && type == 'service_request'
+                ? _serviceRequestAction(row)
                 : null,
           );
         }),
@@ -1460,9 +1688,51 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
     ),
   );
 
+  Widget? _serviceRequestAction(Map<String, dynamic> request) {
+    final status = request['status'];
+    if (status == 'requested') {
+      return IconButton(
+        tooltip: gr ? 'Καταχώριση προσφοράς' : 'Add quote',
+        onPressed: () => _quoteServiceRequest(request),
+        icon: const Icon(Icons.request_quote_outlined),
+      );
+    }
+    if (status == 'quoted') {
+      return PopupMenuButton<String>(
+        onSelected: (value) => _transitionServiceRequest(request, value),
+        itemBuilder: (_) => [
+          PopupMenuItem(
+            value: 'approved',
+            child: Text(gr ? 'Έγκριση προσφοράς' : 'Approve quote'),
+          ),
+          PopupMenuItem(
+            value: 'rejected',
+            child: Text(gr ? 'Απόρριψη προσφοράς' : 'Reject quote'),
+          ),
+        ],
+      );
+    }
+    if (status == 'approved') {
+      return IconButton(
+        tooltip: gr ? 'Έναρξη εργασίας' : 'Start work',
+        onPressed: () => _transitionServiceRequest(request, 'in_progress'),
+        icon: const Icon(Icons.play_circle_outline),
+      );
+    }
+    if (status == 'in_progress') {
+      return IconButton(
+        tooltip: gr ? 'Ολοκλήρωση εργασίας' : 'Complete work',
+        onPressed: () => _transitionServiceRequest(request, 'completed'),
+        icon: const Icon(Icons.task_alt),
+      );
+    }
+    return null;
+  }
+
   Widget _body(Map<String, dynamic> d) {
     final entries = d['charge_entries'] as List<Map<String, dynamic>>;
     final expenses = d['expenses'] as List<Map<String, dynamic>>;
+    final serviceRequests = d['service_requests'] as List<Map<String, dynamic>>;
     final settings = d['settings'] as Map<String, dynamic>?;
     final opening = (settings?['opening_balance'] as num?)?.toDouble() ?? 0;
     final received = entries.fold<double>(
@@ -1487,6 +1757,17 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
           0,
           (sum, row) => sum + ((row['amount'] as num?)?.toDouble() ?? 0),
         );
+    final serviceCommitments = serviceRequests
+        .where(
+          (request) =>
+              request['status'] == 'approved' ||
+              request['status'] == 'in_progress',
+        )
+        .fold<double>(
+          0,
+          (sum, request) =>
+              sum + ((request['quote_amount'] as num?)?.toDouble() ?? 0),
+        );
     final receivables = entries.fold<double>(
       0,
       (sum, row) => sum + _entryOutstanding(row),
@@ -1495,8 +1776,13 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
     final minimum =
         (settings?['minimum_operating_reserve'] as num?)?.toDouble() ?? 0;
     final projectedBalance =
-        balance + receivables - committed - awaitingApproval;
-    final below = balance - committed - awaitingApproval < minimum;
+        balance +
+        receivables -
+        committed -
+        serviceCommitments -
+        awaitingApproval;
+    final below =
+        balance - committed - serviceCommitments - awaitingApproval < minimum;
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final overdueEntries =
@@ -1600,6 +1886,9 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
                     '${gr ? 'Εγκεκριμένες υποχρεώσεις' : 'Approved commitments'}: ${_money(committed)}',
                   ),
                   Text(
+                    '${gr ? 'Εγκεκριμένες προσφορές υπηρεσιών' : 'Approved service quotes'}: ${_money(serviceCommitments)}',
+                  ),
+                  Text(
                     '${gr ? 'Εκκρεμείς προς έγκριση' : 'Awaiting approval'}: ${_money(awaitingApproval)}',
                   ),
                   Text(
@@ -1670,6 +1959,14 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
             d['services'],
             _newService,
             'service',
+          ),
+          _section(
+            gr ? 'Αιτήματα πρόσθετων υπηρεσιών' : 'Additional service requests',
+            Icons.handyman_outlined,
+            serviceRequests,
+            _newServiceRequest,
+            'service_request',
+            allowMemberRequests: true,
           ),
           _section(
             gr ? 'Έξοδα και εγκρίσεις' : 'Expenses and approvals',
