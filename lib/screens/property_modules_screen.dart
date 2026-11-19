@@ -672,6 +672,7 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
         due = TextEditingController();
     final key = GlobalKey<FormState>();
     var cycle = 'monthly';
+    var allocationMethod = 'ownership_share';
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -718,6 +719,36 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
                     ],
                     onChanged: (value) {
                       if (value != null) setDialog(() => cycle = value);
+                    },
+                  ),
+                  DropdownButtonFormField<String>(
+                    value: allocationMethod,
+                    decoration: InputDecoration(
+                      labelText: gr ? 'Τρόπος κατανομής' : 'Allocation method',
+                      helperText: gr
+                          ? 'Με βάση τα δηλωμένα στοιχεία ιδιοκτησίας.'
+                          : 'Uses the declared ownership details.',
+                    ),
+                    items: [
+                      DropdownMenuItem(
+                        value: 'ownership_share',
+                        child: Text(
+                          gr ? 'Ποσοστό ιδιοκτησίας' : 'Ownership share',
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'floor_area',
+                        child: Text(gr ? 'Τετραγωνικά μέτρα' : 'Floor area'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'per_apartment',
+                        child: Text(gr ? 'Ανά διαμέρισμα' : 'Per apartment'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        setDialog(() => allocationMethod = value);
+                      }
                     },
                   ),
                   TextFormField(
@@ -783,6 +814,7 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
           'p_due_date': due.text.trim(),
           'p_currency': 'EUR',
           'p_billing_cycle': cycle,
+          'p_allocation_method': allocationMethod,
         },
       );
       await refresh();
@@ -1665,6 +1697,11 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
             padding: const EdgeInsets.all(16),
             children: runs.map((run) {
               final amounts = totals[run['id'].toString()] ?? (0.0, 0.0);
+              final allocationLabel = switch (run['allocation_method']) {
+                'floor_area' => gr ? 'τ.μ.' : 'area',
+                'per_apartment' => gr ? 'ανά διαμέρισμα' : 'per apartment',
+                _ => gr ? 'χιλιοστά' : 'ownership share',
+              };
               final outstanding = (amounts.$1 - amounts.$2).clamp(
                 0.0,
                 double.infinity,
@@ -1673,7 +1710,7 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
                 child: ListTile(
                   leading: const Icon(Icons.receipt_long_outlined),
                   title: Text(
-                    '${run['period_label']} · ${run['total_amount']} ${run['currency']} · ${run['billing_cycle'] ?? 'monthly'}',
+                    '${run['period_label']} · ${run['total_amount']} ${run['currency']} · ${run['billing_cycle'] ?? 'monthly'} · $allocationLabel',
                   ),
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
