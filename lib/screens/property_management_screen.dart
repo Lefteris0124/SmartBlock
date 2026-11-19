@@ -49,6 +49,11 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
           .eq('property_id', widget.propertyId)
           .order('starts_on', ascending: false),
       db
+          .from('property_management_contract_amendments')
+          .select('*,property_management_contracts(provider_name)')
+          .eq('property_id', widget.propertyId)
+          .order('effective_on', ascending: false),
+      db
           .from('property_management_services')
           .select()
           .eq('property_id', widget.propertyId)
@@ -94,14 +99,15 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
     ]);
     return {
       'contracts': List<Map<String, dynamic>>.from(values[0]),
-      'services': List<Map<String, dynamic>>.from(values[1]),
-      'expenses': List<Map<String, dynamic>>.from(values[2]),
-      'settings': values[3] as Map<String, dynamic>?,
-      'arrears': List<Map<String, dynamic>>.from(values[4]),
-      'insurance': List<Map<String, dynamic>>.from(values[5]),
-      'meetings': List<Map<String, dynamic>>.from(values[6]),
-      'handovers': List<Map<String, dynamic>>.from(values[7]),
-      'charge_entries': List<Map<String, dynamic>>.from(values[8]),
+      'amendments': List<Map<String, dynamic>>.from(values[1]),
+      'services': List<Map<String, dynamic>>.from(values[2]),
+      'expenses': List<Map<String, dynamic>>.from(values[3]),
+      'settings': values[4] as Map<String, dynamic>?,
+      'arrears': List<Map<String, dynamic>>.from(values[5]),
+      'insurance': List<Map<String, dynamic>>.from(values[6]),
+      'meetings': List<Map<String, dynamic>>.from(values[7]),
+      'handovers': List<Map<String, dynamic>>.from(values[8]),
+      'charge_entries': List<Map<String, dynamic>>.from(values[9]),
     };
   }
 
@@ -187,7 +193,13 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
       await _refresh();
       _message(gr ? 'Η καταχώριση αποθηκεύτηκε.' : 'Saved.');
     } on PostgrestException catch (e) {
-      _message(e.message);
+      _message(
+        table == 'property_management_contracts' && e.code == '23505'
+            ? (gr
+                  ? 'Υπάρχει ήδη ενεργή σύμβαση. Τερμάτισε την προηγούμενη ή αποθήκευσε τη νέα ως προσχέδιο.'
+                  : 'An active contract already exists. Terminate it first or save the new contract as a draft.')
+            : e.message,
+      );
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -388,6 +400,179 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
       terms,
     ]) {
       c.dispose();
+    }
+  }
+
+  Future<void> _newContractAmendment() async {
+    final contracts = List<Map<String, dynamic>>.from(
+      await db
+          .from('property_management_contracts')
+          .select('id,provider_name')
+          .eq('property_id', widget.propertyId)
+          .eq('status', 'active')
+          .order('starts_on', ascending: false),
+    );
+    if (contracts.isEmpty) {
+      _message(
+        gr
+            ? 'Χρειάζεται ενεργή σύμβαση για να προστεθεί τροποποίηση.'
+            : 'An active contract is required before adding an amendment.',
+      );
+      return;
+    }
+    var contractId = contracts.first['id'] as String;
+    final title = TextEditingController(),
+        reference = TextEditingController(),
+        effective = TextEditingController(
+          text: DateTime.now().toIso8601String().substring(0, 10),
+        ),
+        summary = TextEditingController(),
+        fee = TextEditingController(),
+        vat = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: Text(
+            gr ? 'Νέα τροποποίηση σύμβασης' : 'New contract amendment',
+          ),
+          content: SizedBox(
+            width: 460,
+            child: SingleChildScrollView(
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    DropdownButtonFormField<String>(
+                      value: contractId,
+                      decoration: InputDecoration(
+                        labelText: gr ? 'Ενεργή σύμβαση' : 'Active contract',
+                      ),
+                      items: contracts
+                          .map(
+                            (c) => DropdownMenuItem(
+                              value: c['id'] as String,
+                              child: Text(c['provider_name'] as String),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (v) {
+                        if (v != null) setDialog(() => contractId = v);
+                      },
+                    ),
+                    _field(
+                      title,
+                      gr ? 'Τίτλος τροποποίησης' : 'Amendment title',
+                      validator: _required,
+                    ),
+                    _field(reference, gr ? 'Αριθμός / αναφορά' : 'Reference'),
+                    _field(
+                      effective,
+                      gr
+                          ? 'Ημερομηνία ισχύος (YYYY-MM-DD)'
+                          : 'Effective date (YYYY-MM-DD)',
+                      validator: _dateValidator,
+                    ),
+                    _field(
+                      summary,
+                      gr ? 'Περιγραφή των αλλαγών' : 'Changes summary',
+                      lines: 4,
+                    ),
+                    _field(
+                      fee,
+                      gr
+                          ? 'Νέα μηνιαία αμοιβή (προαιρετικά)'
+                          : 'New monthly fee (optional)',
+                      keyboard: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                    ),
+                    _field(
+                      vat,
+                      gr ? 'Νέος ΦΠΑ % (προαιρετικά)' : 'New VAT % (optional)',
+                      keyboard: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        gr
+                            ? 'Η τροποποίηση θα μείνει σε αναμονή μέχρι να εγκριθεί από εξουσιοδοτημένο διαχειριστή.'
+                            : 'The amendment remains pending until an authorized manager approves it.',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(gr ? 'Άκυρο' : 'Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => _formKey.currentState!.validate()
+                  ? Navigator.pop(ctx, true)
+                  : null,
+              child: Text(gr ? 'Καταχώριση' : 'Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (ok == true) {
+      await _insert('property_management_contract_amendments', {
+        'contract_id': contractId,
+        'title': title.text.trim(),
+        'amendment_reference': reference.text.trim(),
+        'effective_on': effective.text.trim(),
+        'changes_summary': summary.text.trim(),
+        'monthly_fee_new': fee.text.trim().isEmpty
+            ? null
+            : double.tryParse(fee.text.replaceAll(',', '.')),
+        'vat_rate_new': vat.text.trim().isEmpty
+            ? null
+            : double.tryParse(vat.text.replaceAll(',', '.')),
+      });
+    }
+    for (final c in [title, reference, effective, summary, fee, vat]) {
+      c.dispose();
+    }
+  }
+
+  Future<void> _reviewAmendment(
+    Map<String, dynamic> amendment,
+    String decision,
+  ) async {
+    try {
+      await db.rpc(
+        'review_property_contract_amendment',
+        params: {
+          'p_amendment_id': amendment['id'],
+          'p_approval_status': decision,
+        },
+      );
+      await _refresh();
+    } on PostgrestException catch (e) {
+      _message(e.message);
+    }
+  }
+
+  Future<void> _setContractStatus(
+    Map<String, dynamic> contract,
+    String status,
+  ) async {
+    try {
+      await db
+          .from('property_management_contracts')
+          .update({'status': status})
+          .eq('id', contract['id']);
+      await _refresh();
+    } on PostgrestException catch (e) {
+      _message(e.message);
     }
   }
 
@@ -1175,6 +1360,14 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
           } else if (type == 'handover') {
             titleText = '${row['from_manager']} → ${row['to_manager']}';
             subtitle = '${row['handover_date']} · ${row['status']}';
+          } else if (type == 'contract_amendment') {
+            final contract =
+                row['property_management_contracts'] as Map<String, dynamic>? ??
+                {};
+            final newFee = row['monthly_fee_new'] as num?;
+            titleText = '${row['title']} · ${contract['provider_name'] ?? ''}';
+            subtitle =
+                '${row['effective_on']} · ${row['approval_status']}${newFee == null ? '' : ' · ${_money(newFee)}/${gr ? 'μήνα' : 'month'}'}';
           } else {
             final owner = row['property_owners'] as Map<String, dynamic>? ?? {};
             final org = owner['organizations'] as Map<String, dynamic>? ?? {};
@@ -1220,6 +1413,45 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
                     tooltip: gr ? 'Αποδοχή παράδοσης' : 'Accept handover',
                     onPressed: () => _acceptHandover(row),
                     icon: const Icon(Icons.task_alt),
+                  )
+                : canManage &&
+                      type == 'contract' &&
+                      ['active', 'draft'].contains(row['status'])
+                ? PopupMenuButton<String>(
+                    onSelected: (v) => _setContractStatus(row, v),
+                    itemBuilder: (_) => [
+                      if (row['status'] == 'draft')
+                        PopupMenuItem(
+                          value: 'active',
+                          child: Text(gr ? 'Ενεργοποίηση' : 'Activate'),
+                        ),
+                      if (row['status'] == 'active') ...[
+                        PopupMenuItem(
+                          value: 'terminated',
+                          child: Text(gr ? 'Τερματισμός' : 'Terminate'),
+                        ),
+                        PopupMenuItem(
+                          value: 'expired',
+                          child: Text(gr ? 'Λήξη σύμβασης' : 'Mark expired'),
+                        ),
+                      ],
+                    ],
+                  )
+                : canManage &&
+                      type == 'contract_amendment' &&
+                      row['approval_status'] == 'pending'
+                ? PopupMenuButton<String>(
+                    onSelected: (v) => _reviewAmendment(row, v),
+                    itemBuilder: (_) => [
+                      PopupMenuItem(
+                        value: 'approved',
+                        child: Text(gr ? 'Έγκριση' : 'Approve'),
+                      ),
+                      PopupMenuItem(
+                        value: 'rejected',
+                        child: Text(gr ? 'Απόρριψη' : 'Reject'),
+                      ),
+                    ],
                   )
                 : null,
           );
@@ -1422,6 +1654,13 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
             d['contracts'],
             _newContract,
             'contract',
+          ),
+          _section(
+            gr ? 'Τροποποιήσεις συμβάσεων' : 'Contract amendments',
+            Icons.edit_document,
+            d['amendments'],
+            _newContractAmendment,
+            'contract_amendment',
           ),
           _section(
             gr

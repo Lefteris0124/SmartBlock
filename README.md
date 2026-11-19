@@ -13,6 +13,7 @@
 - SmartBlock staff review screens, property votes, common charge runs, and rental contracts.
 - Property management records for contracts, services, expenses, reserve settings, arrears actions, insurance, meetings, and handovers.
 - A server-side cash-reserve check for expense payments, plus a property-scoped list of overdue common charges with linked follow-up history.
+- One-active-contract enforcement with an amendment log and authorized approval of revised fees and VAT.
 - Monthly, quarterly, semiannual, annual, or custom common-charge cycles, with a property finance overview.
 - Common charges can be allocated by ownership share, declared floor area, or apartment count; each run records the method used.
 
@@ -39,7 +40,7 @@ The workflow in `.github/workflows/deploy-web.yml` builds and deploys the Web ap
 
 Use the publishable key for the client app. Do not use a secret or `service_role` key in Flutter.
 
-SB_105 enables property-first creation, phone lookup for owners, staff roles, and review actions. SB_106 adds voting, common-charge allocation/payment tracking, and rental contracts. SB_112 adds property management records and private management-document storage; SB_113 adds flexible common-charge cycles; SB_114 adds finance opening balances; SB_115 adds an atomic reserve-aware expense-payment RPC; SB_116 adds allocation by ownership share, floor area, or apartment count. These migrations are applied to the linked production Supabase project. To make the signed-in operator an admin, run a private one-time insert into `public.smartblock_staff` for their `auth.users.id`; do not commit user IDs or service-role credentials. The app exposes the admin review menu only when `is_smartblock_staff()` returns true.
+SB_105 enables property-first creation, phone lookup for owners, staff roles, and review actions. SB_106 adds voting, common-charge allocation/payment tracking, and rental contracts. SB_112 adds property management records and private management-document storage; SB_113 adds flexible common-charge cycles; SB_114 adds finance opening balances; SB_115 adds an atomic reserve-aware expense-payment RPC; SB_116 adds allocation by ownership share, floor area, or apartment count; SB_117 adds single-active-contract enforcement and reviewed amendments. These migrations are applied to the linked production Supabase project. To make the signed-in operator an admin, run a private one-time insert into `public.smartblock_staff` for their `auth.users.id`; do not commit user IDs or service-role credentials. The app exposes the admin review menu only when `is_smartblock_staff()` returns true.
 
 The organization, property, co-owner, and review workflow database scripts are archived in `supabase/queries`. SB_092–SB_104 have been applied to the linked Supabase project. They are retained as reference SQL; do not rerun the table-creation scripts SB_092–SB_096.
 
