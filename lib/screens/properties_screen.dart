@@ -5,12 +5,15 @@ import 'property_details_screen.dart';
 import 'admin_review_screen.dart';
 import 'resident_service_requests_screen.dart';
 
+enum PropertiesViewMode { all, owner, resident }
+
 class PropertiesScreen extends StatefulWidget {
   const PropertiesScreen({
     this.organizationId,
     this.organizationName,
     this.organizationApprovalStatus,
     required this.isGreek,
+    this.viewMode = PropertiesViewMode.all,
     super.key,
   });
 
@@ -18,6 +21,7 @@ class PropertiesScreen extends StatefulWidget {
   final String? organizationName;
   final String? organizationApprovalStatus;
   final bool isGreek;
+  final PropertiesViewMode viewMode;
 
   @override
   State<PropertiesScreen> createState() => _PropertiesScreenState();
@@ -36,28 +40,33 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
   }
 
   Future<List<Map<String, dynamic>>> _load() async {
-    var query = _client
-        .from('properties')
-        .select(
-          'id, name, property_type, other_description, total_apartments, address, city, country, management_model, approval_status, organization_id, created_by',
+    final rows = <Map<String, dynamic>>[];
+    if (widget.viewMode != PropertiesViewMode.resident) {
+      var query = _client
+          .from('properties')
+          .select(
+            'id, name, property_type, other_description, total_apartments, address, city, country, management_model, approval_status, organization_id, created_by',
+          );
+      final userId = _client.auth.currentUser?.id;
+      if (widget.organizationId != null && userId != null) {
+        query = query.or(
+          'created_by.eq.$userId,organization_id.eq.${widget.organizationId}',
         );
-    final userId = _client.auth.currentUser?.id;
-    if (widget.organizationId != null && userId != null) {
-      query = query.or(
-        'created_by.eq.$userId,organization_id.eq.${widget.organizationId}',
-      );
-    } else if (widget.organizationId != null) {
-      query = query.eq('organization_id', widget.organizationId!);
+      } else if (widget.organizationId != null) {
+        query = query.eq('organization_id', widget.organizationId!);
+      }
+      rows.addAll(List<Map<String, dynamic>>.from(
+        await query.order('created_at', ascending: false),
+      ));
     }
-    final rows = List<Map<String, dynamic>>.from(
-      await query.order('created_at', ascending: false),
-    );
     final fullAccessPropertyIds = rows
         .map((property) => property['id'] as String)
         .toSet();
-    final residentRows = List<Map<String, dynamic>>.from(
-      await _client.rpc('list_my_resident_properties'),
-    );
+    final residentRows = widget.viewMode == PropertiesViewMode.owner
+        ? <Map<String, dynamic>>[]
+        : List<Map<String, dynamic>>.from(
+            await _client.rpc('list_my_resident_properties'),
+          );
     for (final resident in residentRows) {
       final id = resident['property_id'] as String;
       if (fullAccessPropertyIds.contains(id)) continue;
@@ -343,7 +352,9 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
     appBar: AppBar(
       title: Text(
         widget.organizationName ??
-            (_greek ? 'Τα ακίνητά μου' : 'My properties'),
+            (widget.viewMode == PropertiesViewMode.resident
+                ? (_greek ? 'Το διαμέρισμά μου' : 'My apartment')
+                : (_greek ? 'Τα ακίνητά μου' : 'My properties')),
       ),
       actions: [
         IconButton(
@@ -373,7 +384,9 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
         ),
       ],
     ),
-    floatingActionButton: FloatingActionButton.extended(
+    floatingActionButton: widget.viewMode == PropertiesViewMode.resident
+        ? null
+        : FloatingActionButton.extended(
       onPressed: _createProperty,
       icon: const Icon(Icons.add_home_work_outlined),
       label: Text(_greek ? 'Νέο ακίνητο' : 'New property'),
@@ -389,7 +402,9 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
             padding: const EdgeInsets.all(20),
             children: [
               Text(
-                _greek ? 'Ακίνητα' : 'Properties',
+                widget.viewMode == PropertiesViewMode.resident
+                    ? (_greek ? 'Το ακίνητό σου' : 'Your property')
+                    : (_greek ? 'Ακίνητα' : 'Properties'),
                 style: Theme.of(context).textTheme.headlineSmall
                     ?.copyWith(fontWeight: FontWeight.bold),
               ),
@@ -441,28 +456,41 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          _greek
-                              ? 'Ξεκίνα με το πρώτο σου ακίνητο'
-                              : 'Start with your first property',
+                          widget.viewMode == PropertiesViewMode.resident
+                              ? (_greek
+                                  ? 'Δεν έχει συνδεθεί ακόμη διαμέρισμα στον λογαριασμό σου.'
+                                  : 'No apartment has been assigned to your account yet.')
+                              : (_greek
+                                  ? 'Ξεκίνα με το πρώτο σου ακίνητο'
+                                  : 'Start with your first property'),
                           textAlign: TextAlign.center,
                           style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(fontWeight: FontWeight.w700),
                         ),
                         const SizedBox(height: 8),
-                        Text(
-                          _greek
-                              ? 'Πρόσθεσε διαμέρισμα ή πολυκατοικία. Έπειτα θα καταχωρίσεις τους ιδιοκτήτες μέσα στο ακίνητο.'
-                              : 'Add an apartment or building. You can add its owners from the property page.',
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 16),
-                        FilledButton.icon(
-                          onPressed: _createProperty,
-                          icon: const Icon(Icons.add_home_work_outlined),
-                          label: Text(
-                            _greek ? 'Προσθήκη ακινήτου' : 'Add property',
+                        if (widget.viewMode == PropertiesViewMode.resident)
+                          Text(
+                            _greek
+                                ? 'Ζήτησε από τον διαχειριστή να συνδέσει το email του λογαριασμού σου με το διαμέρισμά σου.'
+                                : 'Ask your building manager to assign your account email to your apartment.',
+                            textAlign: TextAlign.center,
+                          )
+                        else ...[
+                          Text(
+                            _greek
+                                ? 'Πρόσθεσε διαμέρισμα ή πολυκατοικία. Έπειτα θα καταχωρίσεις τους ιδιοκτήτες μέσα στο ακίνητο.'
+                                : 'Add an apartment or building. You can add its owners from the property page.',
+                            textAlign: TextAlign.center,
                           ),
-                        ),
+                          const SizedBox(height: 16),
+                          FilledButton.icon(
+                            onPressed: _createProperty,
+                            icon: const Icon(Icons.add_home_work_outlined),
+                            label: Text(
+                              _greek ? 'Προσθήκη ακινήτου' : 'Add property',
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
