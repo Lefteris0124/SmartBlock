@@ -339,6 +339,68 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _signInWithProvider(OAuthProvider provider) async {
+    setState(() => isBusy = true);
+    try {
+      final launched = await Supabase.instance.client.auth.signInWithOAuth(
+        provider,
+        redirectTo: _authRedirectUrl,
+        scopes: provider == OAuthProvider.azure ? 'email' : null,
+        authScreenLaunchMode: kIsWeb
+            ? LaunchMode.platformDefault
+            : LaunchMode.externalApplication,
+      );
+      if (!launched && mounted) {
+        _showMessage(
+          isGreek
+              ? 'Δεν άνοιξε η σύνδεση. Δοκίμασε ξανά.'
+              : 'Could not open sign-in. Try again.',
+        );
+      }
+    } on AuthException catch (error) {
+      if (!mounted) return;
+      final message = error.message.toLowerCase();
+      _showMessage(
+        message.contains('provider') &&
+                (message.contains('not enabled') ||
+                    message.contains('unsupported'))
+            ? (isGreek
+                  ? 'Ο πάροχος σύνδεσης δεν έχει ρυθμιστεί ακόμη στο Supabase.'
+                  : 'This sign-in provider has not been configured in Supabase yet.')
+            : error.message,
+      );
+    } catch (_) {
+      if (mounted) {
+        _showMessage(
+          isGreek
+              ? 'Η σύνδεση δεν είναι διαθέσιμη ακόμη. Δοκίμασε ξανά αργότερα.'
+              : 'Social sign-in is not available yet. Try again later.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => isBusy = false);
+    }
+  }
+
+  Widget _socialSignInButton({
+    required OAuthProvider provider,
+    required IconData icon,
+    required String label,
+  }) => SizedBox(
+    height: 52,
+    child: OutlinedButton.icon(
+      onPressed: isBusy ? null : () => _signInWithProvider(provider),
+      icon: Icon(icon),
+      label: Text(label),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: const Color(0xFF17324D),
+        backgroundColor: Colors.white,
+        side: const BorderSide(color: Color(0xFFD6E0E7)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+    ),
+  );
+
   Future<void> _sendPasswordReset() async {
     final email = emailController.text.trim();
     if (!_isValidEmail(email)) {
@@ -538,6 +600,44 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                     ),
                   ),
+                  const SizedBox(height: 22),
+                  Row(
+                    children: [
+                      const Expanded(child: Divider()),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Text(
+                          isGreek ? 'ή συνέχισε με' : 'or continue with',
+                          style: const TextStyle(color: Color(0xFF637587)),
+                        ),
+                      ),
+                      const Expanded(child: Divider()),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  _socialSignInButton(
+                    provider: OAuthProvider.google,
+                    icon: Icons.g_mobiledata,
+                    label: isGreek
+                        ? 'Συνέχεια με Google'
+                        : 'Continue with Google',
+                  ),
+                  const SizedBox(height: 10),
+                  _socialSignInButton(
+                    provider: OAuthProvider.apple,
+                    icon: Icons.phone_iphone_outlined,
+                    label: isGreek
+                        ? 'Συνέχεια με Apple'
+                        : 'Continue with Apple',
+                  ),
+                  const SizedBox(height: 10),
+                  _socialSignInButton(
+                    provider: OAuthProvider.azure,
+                    icon: Icons.grid_view_rounded,
+                    label: isGreek
+                        ? 'Συνέχεια με Microsoft'
+                        : 'Continue with Microsoft',
+                  ),
                   if (!isCreatingAccount)
                     Align(
                       alignment: Alignment.centerRight,
@@ -587,4 +687,3 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
-
