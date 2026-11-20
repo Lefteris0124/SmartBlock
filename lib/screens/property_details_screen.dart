@@ -257,6 +257,7 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
         builder: (_) => PropertyManagementScreen(
           propertyId: _property['id'] as String,
           propertyName: _property['name'] as String? ?? '',
+          totalApartments: (_property['total_apartments'] as num?)?.toInt(),
           isGreek: _isGreek,
         ),
       ),

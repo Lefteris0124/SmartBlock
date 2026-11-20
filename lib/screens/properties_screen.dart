@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'property_details_screen.dart';
 import 'admin_review_screen.dart';
+import 'resident_service_requests_screen.dart';
 
 class PropertiesScreen extends StatefulWidget {
   const PropertiesScreen({
@@ -48,8 +49,32 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
     } else if (widget.organizationId != null) {
       query = query.eq('organization_id', widget.organizationId!);
     }
-    final rows = await query.order('created_at', ascending: false);
-    return List<Map<String, dynamic>>.from(rows);
+    final rows = List<Map<String, dynamic>>.from(
+      await query.order('created_at', ascending: false),
+    );
+    final fullAccessPropertyIds = rows
+        .map((property) => property['id'] as String)
+        .toSet();
+    final residentRows = List<Map<String, dynamic>>.from(
+      await _client.rpc('list_my_resident_properties'),
+    );
+    for (final resident in residentRows) {
+      final id = resident['property_id'] as String;
+      if (fullAccessPropertyIds.contains(id)) continue;
+      rows.add({
+        'id': id,
+        'name': resident['property_name'],
+        'property_type': resident['property_type'],
+        'address': resident['property_address'],
+        'city': resident['property_city'],
+        'total_apartments': resident['total_apartments'],
+        'approval_status': 'approved',
+        'organization_id': null,
+        '_resident_only': true,
+        '_resident_apartment_number': resident['apartment_number'],
+      });
+    }
+    return rows;
   }
 
   Future<void> _refresh() async {
@@ -116,12 +141,17 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
                         controller: apartments,
                         keyboardType: TextInputType.number,
                         decoration: InputDecoration(
-                          labelText: _greek ? 'Συνολικά διαμερίσματα' : 'Total apartments',
+                          labelText: _greek
+                              ? 'Συνολικά διαμερίσματα'
+                              : 'Total apartments',
                         ),
-                        validator: (v) => type != 'building' ? null :
-                            (int.tryParse((v ?? '').trim()) ?? 0) < 1
-                                ? (_greek ? 'Βάλε τον αριθμό διαμερισμάτων.' : 'Enter the apartment count.')
-                                : null,
+                        validator: (v) => type != 'building'
+                            ? null
+                            : (int.tryParse((v ?? '').trim()) ?? 0) < 1
+                            ? (_greek
+                                  ? 'Βάλε τον αριθμό διαμερισμάτων.'
+                                  : 'Enter the apartment count.')
+                            : null,
                       ),
                     ],
                     if (type == 'other') ...[
@@ -324,9 +354,15 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
           future: _client.rpc('is_smartblock_staff'),
           builder: (context, snapshot) => snapshot.data == true
               ? IconButton(
-                  tooltip: _greek ? 'Κέντρο διαχείρισης' : 'Admin control center',
+                  tooltip: _greek
+                      ? 'Κέντρο διαχείρισης'
+                      : 'Admin control center',
                   icon: const Icon(Icons.admin_panel_settings_outlined),
-                  onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => AdminReviewScreen(isGreek: _greek))),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => AdminReviewScreen(isGreek: _greek),
+                    ),
+                  ),
                 )
               : const SizedBox.shrink(),
         ),
@@ -409,9 +445,7 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
                               ? 'Ξεκίνα με το πρώτο σου ακίνητο'
                               : 'Start with your first property',
                           textAlign: TextAlign.center,
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
+                          style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(fontWeight: FontWeight.w700),
                         ),
                         const SizedBox(height: 8),
@@ -442,22 +476,53 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
                       ),
                       title: Text(p['name'] as String? ?? ''),
                       subtitle: Text(
-                        [
-                              _propertyTypeLabel(
-                                p['property_type'] as String?,
-                                p['other_description'] as String?,
-                              ),
-                              p['address'],
-                              p['city'],
-                              (p['total_apartments'] == null ? null : '${p['total_apartments']} ${_greek ? 'διαμερίσματα' : 'apartments'}'),
-                              _approvalLabel(p['approval_status'] as String?),
-                            ]
-                            .whereType<String>()
-                            .where((s) => s.isNotEmpty)
-                            .join(' · '),
+                        p['_resident_only'] == true
+                            ? [
+                                    _greek
+                                        ? 'Διαμέρισμα ${p['_resident_apartment_number']}'
+                                        : 'Apartment ${p['_resident_apartment_number']}',
+                                    p['address'],
+                                    p['city'],
+                                  ]
+                                  .whereType<String>()
+                                  .where((s) => s.isNotEmpty)
+                                  .join(' · ')
+                            : [
+                                    _propertyTypeLabel(
+                                      p['property_type'] as String?,
+                                      p['other_description'] as String?,
+                                    ),
+                                    p['address'],
+                                    p['city'],
+                                    (p['total_apartments'] == null
+                                        ? null
+                                        : '${p['total_apartments']} ${_greek ? 'διαμερίσματα' : 'apartments'}'),
+                                    _approvalLabel(
+                                      p['approval_status'] as String?,
+                                    ),
+                                  ]
+                                  .whereType<String>()
+                                  .where((s) => s.isNotEmpty)
+                                  .join(' · '),
                       ),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () async {
+                        if (p['_resident_only'] == true) {
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute<void>(
+                              builder: (_) => ResidentServiceRequestsScreen(
+                                propertyId: p['id'] as String,
+                                propertyName: p['name'] as String? ?? '',
+                                apartmentNumber:
+                                    p['_resident_apartment_number'] as String,
+                                isGreek: _greek,
+                              ),
+                            ),
+                          );
+                          await _refresh();
+                          return;
+                        }
                         await Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -484,6 +549,3 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
     ),
   );
 }
-
-
-

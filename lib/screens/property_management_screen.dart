@@ -7,12 +7,14 @@ class PropertyManagementScreen extends StatefulWidget {
   const PropertyManagementScreen({
     required this.propertyId,
     required this.propertyName,
+    this.totalApartments,
     required this.isGreek,
     super.key,
   });
 
   final String propertyId;
   final String propertyName;
+  final int? totalApartments;
   final bool isGreek;
 
   @override
@@ -106,6 +108,10 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
             'id,property_owner_id,amount_due,amount_paid,status,property_owners!inner(id,organizations(display_name)),property_charge_runs!inner(property_id,period_label,description,due_date)',
           )
           .eq('property_charge_runs.property_id', widget.propertyId),
+      db.rpc(
+        'list_property_residents',
+        params: {'p_property_id': widget.propertyId},
+      ),
     ]);
     return {
       'contracts': List<Map<String, dynamic>>.from(values[0]),
@@ -120,6 +126,7 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
       'meetings': List<Map<String, dynamic>>.from(values[9]),
       'handovers': List<Map<String, dynamic>>.from(values[10]),
       'charge_entries': List<Map<String, dynamic>>.from(values[11]),
+      'residents': List<Map<String, dynamic>>.from(values[12]),
     };
   }
 
@@ -831,6 +838,11 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
     var serviceId = '';
     var requestType = 'service';
     var priority = 'normal';
+    var apartmentNumber = '1';
+    final apartmentOptions = List<String>.generate(
+      (widget.totalApartments ?? 1).clamp(1, 500),
+      (index) => '${index + 1}',
+    );
     final title = TextEditingController(),
         description = TextEditingController(),
         location = TextEditingController();
@@ -851,6 +863,34 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      DropdownButtonFormField<String>(
+                        initialValue: apartmentNumber,
+                        decoration: InputDecoration(
+                          labelText: gr ? 'Διαμέρισμα' : 'Apartment',
+                        ),
+                        items: [
+                          ...apartmentOptions.map(
+                            (number) => DropdownMenuItem(
+                              value: number,
+                              child: Text(
+                                gr ? 'Διαμέρισμα $number' : 'Apartment $number',
+                              ),
+                            ),
+                          ),
+                          DropdownMenuItem(
+                            value: 'common_area',
+                            child: Text(
+                              gr ? 'Κοινόχρηστος χώρος' : 'Common area',
+                            ),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          if (value != null) {
+                            setDialog(() => apartmentNumber = value);
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
                         value: requestType,
                         decoration: InputDecoration(
@@ -1011,6 +1051,7 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
     if (ok == true) {
       await _insert('property_service_requests', {
         'service_id': serviceId.isEmpty ? null : serviceId,
+        'apartment_number': apartmentNumber,
         'request_type': requestType,
         'priority': priority,
         'location': location.text.trim(),
@@ -1021,6 +1062,131 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
     title.dispose();
     description.dispose();
     location.dispose();
+  }
+
+  Future<void> _newResident() async {
+    final email = TextEditingController();
+    final total = (widget.totalApartments ?? 1).clamp(1, 500);
+    var apartmentNumber = '1';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: Text(gr ? 'Προσθήκη ενοίκου' : 'Add a resident'),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: email,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: InputDecoration(
+                    labelText: gr
+                        ? 'Email λογαριασμού SmartBlock'
+                        : 'SmartBlock account email',
+                    helperText: gr
+                        ? 'Ο ένοικος πρέπει πρώτα να δημιουργήσει λογαριασμό.'
+                        : 'The tenant must create a SmartBlock account first.',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: apartmentNumber,
+                  decoration: InputDecoration(
+                    labelText: gr ? 'Διαμέρισμα' : 'Apartment',
+                  ),
+                  items: List<DropdownMenuItem<String>>.generate(
+                    total,
+                    (index) => DropdownMenuItem(
+                      value: '${index + 1}',
+                      child: Text(
+                        gr
+                            ? 'Διαμέρισμα ${index + 1}'
+                            : 'Apartment ${index + 1}',
+                      ),
+                    ),
+                  ),
+                  onChanged: (value) {
+                    if (value != null) {
+                      setDialog(() => apartmentNumber = value);
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(gr ? 'Άκυρο' : 'Cancel'),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  email.text.trim().isEmpty ? null : Navigator.pop(ctx, true),
+              child: Text(gr ? 'Προσθήκη' : 'Add resident'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (ok == true) {
+      try {
+        await db.rpc(
+          'assign_property_resident',
+          params: {
+            'p_property_id': widget.propertyId,
+            'p_resident_email': email.text.trim(),
+            'p_apartment_number': apartmentNumber,
+          },
+        );
+        _message(
+          gr
+              ? 'Ο ένοικος συνδέθηκε με το διαμέρισμα $apartmentNumber.'
+              : 'Resident linked to apartment $apartmentNumber.',
+        );
+        await _refresh();
+      } on PostgrestException catch (error) {
+        _message(error.message);
+      }
+    }
+    email.dispose();
+  }
+
+  Future<void> _deactivateResident(Map<String, dynamic> resident) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          gr ? 'Αφαίρεση πρόσβασης ενοίκου;' : 'Remove resident access?',
+        ),
+        content: Text(
+          gr
+              ? 'Ο λογαριασμός δεν θα μπορεί πλέον να στέλνει αναφορές για αυτό το διαμέρισμα.'
+              : 'This account will no longer be able to submit reports for this apartment.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(gr ? 'Άκυρο' : 'Cancel'),
+          ),
+          FilledButton.tonal(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(gr ? 'Αφαίρεση' : 'Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await db.rpc(
+        'deactivate_property_resident',
+        params: {'p_resident_id': resident['id']},
+      );
+      await _refresh();
+    } on PostgrestException catch (error) {
+      _message(error.message);
+    }
   }
 
   Future<void> _quoteServiceRequest(Map<String, dynamic> request) async {
@@ -1967,6 +2133,13 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
         ],
       );
     }
+    if (type == 'resident') {
+      return IconButton(
+        tooltip: gr ? 'Αφαίρεση πρόσβασης' : 'Remove access',
+        onPressed: busy ? null : () => _deactivateResident(row),
+        icon: const Icon(Icons.person_remove_outlined),
+      );
+    }
     if (type == 'service_request') return _serviceRequestAction(row);
     if (type == 'claim') return _insuranceClaimAction(row);
     return null;
@@ -2019,6 +2192,10 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
             titleText = row['title'] as String? ?? '';
             subtitle =
                 '${row['fee_amount'] == null ? (gr ? 'Απαιτείται προσφορά' : 'Quote required') : _money((row['fee_amount'] as num))} · ${row['fee_unit']} · ${row['requires_prior_approval'] == true ? (gr ? 'με έγκριση' : 'approval required') : ''}';
+          } else if (type == 'resident') {
+            titleText = row['resident_email'] as String? ?? '';
+            final apartment = row['apartment_number'] as String? ?? '';
+            subtitle = gr ? 'Διαμέρισμα $apartment' : 'Apartment $apartment';
           } else if (type == 'expense') {
             titleText =
                 '${row['description']} · ${_money(row['amount'] as num)}';
@@ -2079,11 +2256,13 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
                     _ => 'Normal',
                   };
             final location = (row['location'] as String? ?? '').trim();
+            final apartmentNumber =
+                row['apartment_number'] as String? ?? 'common_area';
             titleText =
                 '$typeLabel · ${row['title']}${serviceTitle == null ? '' : ' · $serviceTitle'}';
             final quote = row['quote_amount'] as num?;
             subtitle =
-                '$priorityLabel${location.isEmpty ? '' : ' · $location'} · ${row['status']}${quote == null ? '' : ' · ${_money(quote)}'}${(row['supplier'] as String? ?? '').isEmpty ? '' : ' · ${row['supplier']}'}${(row['description'] as String? ?? '').isEmpty ? '' : ' · ${row['description']}'}';
+                '${apartmentNumber == 'common_area' ? (gr ? 'Κοινόχρηστος χώρος' : 'Common area') : (gr ? 'Διαμέρισμα $apartmentNumber' : 'Apartment $apartmentNumber')} · $priorityLabel${location.isEmpty ? '' : ' · $location'} · ${row['status']}${quote == null ? '' : ' · ${_money(quote)}'}${(row['supplier'] as String? ?? '').isEmpty ? '' : ' · ${row['supplier']}'}${(row['description'] as String? ?? '').isEmpty ? '' : ' · ${row['description']}'}';
           } else if (type == 'claim') {
             final policy =
                 row['property_insurance_policies'] as Map<String, dynamic>? ??
@@ -2500,6 +2679,13 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
             _newServiceRequest,
             'service_request',
             allowMemberRequests: true,
+          ),
+          _section(
+            gr ? 'Ένοικοι ανά διαμέρισμα' : 'Residents by apartment',
+            Icons.people_alt_outlined,
+            d['residents'],
+            _newResident,
+            'resident',
           ),
           _section(
             gr ? 'Έξοδα και εγκρίσεις' : 'Expenses and approvals',

@@ -15,6 +15,7 @@
 - A server-side cash-reserve check for expense payments, plus a property-scoped list of overdue common charges with linked follow-up history.
 - One-active-contract enforcement with an amendment log and authorized approval of revised fees and VAT.
 - Resident service requests follow quote, approval, work, and expense review steps; approved quotes count against the reserve before completion.
+- Residents can be linked to a property by their registered email and apartment number, then submit apartment-specific damage or service reports; database policies restrict residents to their own apartment and their own requests.
 - Insurance claims are linked to a policy and tracked from report through review, decision, payout, and closure.
 - Monthly, quarterly, semiannual, annual, or custom common-charge cycles, with a property finance overview.
 - Common charges can be allocated by ownership share, declared floor area, or apartment count; each run records the method used.
