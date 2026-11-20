@@ -83,4 +83,3 @@ $function$;
 
 REVOKE ALL ON FUNCTION public.create_property_charge_run(uuid,text,text,numeric,date,text,text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.create_property_charge_run(uuid,text,text,numeric,date,text,text) TO authenticated;
-

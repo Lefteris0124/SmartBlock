@@ -829,73 +829,167 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
     );
     if (!mounted) return;
     var serviceId = '';
+    var requestType = 'service';
+    var priority = 'normal';
     final title = TextEditingController(),
-        description = TextEditingController();
+        description = TextEditingController(),
+        location = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialog) => AlertDialog(
-          title: Text(gr ? 'Νέο αίτημα υπηρεσίας' : 'New service request'),
+          title: Text(gr ? 'Νέα αναφορά ή υπηρεσία' : 'New report or service'),
           content: SizedBox(
             width: 460,
-            child: Form(
-              key: _formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (services.isNotEmpty)
-                    DropdownButtonFormField<String>(
-                      value: serviceId,
-                      decoration: InputDecoration(
-                        labelText: gr
-                            ? 'Υπηρεσία καταλόγου (προαιρετικά)'
-                            : 'Catalogue service (optional)',
-                      ),
-                      items: [
-                        DropdownMenuItem(
-                          value: '',
-                          child: Text(gr ? 'Άλλη υπηρεσία' : 'Other service'),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.sizeOf(ctx).height * .62,
+              ),
+              child: SingleChildScrollView(
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      DropdownButtonFormField<String>(
+                        value: requestType,
+                        decoration: InputDecoration(
+                          labelText: gr ? 'Τύπος αιτήματος' : 'Request type',
                         ),
-                        ...services.map(
-                          (service) => DropdownMenuItem(
-                            value: service['id'] as String,
-                            child: Text(service['title'] as String),
+                        items: [
+                          DropdownMenuItem(
+                            value: 'service',
+                            child: Text(
+                              gr ? 'Επιλογή υπηρεσίας' : 'Request a service',
+                            ),
                           ),
+                          DropdownMenuItem(
+                            value: 'damage_report',
+                            child: Text(
+                              gr ? 'Αναφορά βλάβης' : 'Report a problem',
+                            ),
+                          ),
+                          DropdownMenuItem(
+                            value: 'maintenance',
+                            child: Text(gr ? 'Συντήρηση' : 'Maintenance'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'cleaning',
+                            child: Text(gr ? 'Καθαρισμός' : 'Cleaning'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'safety',
+                            child: Text(
+                              gr
+                                  ? 'Ασφάλεια / κοινόχρηστος χώρος'
+                                  : 'Safety / common area',
+                            ),
+                          ),
+                          DropdownMenuItem(
+                            value: 'other',
+                            child: Text(gr ? 'Άλλο αίτημα' : 'Other request'),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          if (value != null)
+                            setDialog(() => requestType = value);
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        value: priority,
+                        decoration: InputDecoration(
+                          labelText: gr ? 'Προτεραιότητα' : 'Priority',
                         ),
-                      ],
-                      onChanged: (value) {
-                        if (value == null) return;
-                        setDialog(() {
-                          serviceId = value;
-                          if (value.isNotEmpty) {
-                            title.text =
-                                services.firstWhere(
-                                      (service) => service['id'] == value,
-                                    )['title']
-                                    as String;
-                          }
-                        });
-                      },
-                    ),
-                  _field(
-                    title,
-                    gr ? 'Τι χρειάζεται;' : 'What do you need?',
-                    validator: _required,
+                        items: [
+                          DropdownMenuItem(
+                            value: 'normal',
+                            child: Text(gr ? 'Κανονική' : 'Normal'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'urgent',
+                            child: Text(gr ? 'Επείγουσα' : 'Urgent'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'emergency',
+                            child: Text(
+                              gr ? 'Άμεσος κίνδυνος' : 'Immediate danger',
+                            ),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          if (value != null) setDialog(() => priority = value);
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      if (services.isNotEmpty)
+                        DropdownButtonFormField<String>(
+                          value: serviceId,
+                          decoration: InputDecoration(
+                            labelText: gr
+                                ? 'Υπηρεσία καταλόγου (προαιρετικά)'
+                                : 'Catalogue service (optional)',
+                          ),
+                          items: [
+                            DropdownMenuItem(
+                              value: '',
+                              child: Text(
+                                gr ? 'Άλλη υπηρεσία' : 'Other service',
+                              ),
+                            ),
+                            ...services.map(
+                              (service) => DropdownMenuItem(
+                                value: service['id'] as String,
+                                child: Text(service['title'] as String),
+                              ),
+                            ),
+                          ],
+                          onChanged: (value) {
+                            if (value == null) return;
+                            setDialog(() {
+                              serviceId = value;
+                              if (value.isNotEmpty) {
+                                title.text =
+                                    services.firstWhere(
+                                          (service) => service['id'] == value,
+                                        )['title']
+                                        as String;
+                              }
+                            });
+                          },
+                        ),
+                      _field(
+                        location,
+                        gr
+                            ? 'Τοποθεσία (π.χ. διαμέρισμα ή είσοδος)'
+                            : 'Location (e.g. apartment or entrance)',
+                      ),
+                      _field(
+                        title,
+                        gr
+                            ? 'Σύντομος τίτλος (π.χ. διαρροή νερού)'
+                            : 'Short title (e.g. water leak)',
+                        validator: _required,
+                      ),
+                      _field(
+                        description,
+                        gr
+                            ? 'Περιγραφή / λεπτομέρειες'
+                            : 'Description / details',
+                        lines: 4,
+                        validator: _required,
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          gr
+                              ? 'Το αίτημα θα λάβει προσφορά και θα χρειαστεί έγκριση πριν ξεκινήσει η εργασία.'
+                              : 'The request will receive a quote and require approval before work starts.',
+                        ),
+                      ),
+                    ],
                   ),
-                  _field(
-                    description,
-                    gr ? 'Περιγραφή / λεπτομέρειες' : 'Description / details',
-                    lines: 4,
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      gr
-                          ? 'Το αίτημα θα λάβει προσφορά και θα χρειαστεί έγκριση πριν ξεκινήσει η εργασία.'
-                          : 'The request will receive a quote and require approval before work starts.',
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
@@ -908,7 +1002,7 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
               onPressed: () => _formKey.currentState!.validate()
                   ? Navigator.pop(ctx, true)
                   : null,
-              child: Text(gr ? 'Αποστολή αιτήματος' : 'Submit request'),
+              child: Text(gr ? 'Υποβολή αναφοράς' : 'Submit report'),
             ),
           ],
         ),
@@ -917,12 +1011,16 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
     if (ok == true) {
       await _insert('property_service_requests', {
         'service_id': serviceId.isEmpty ? null : serviceId,
+        'request_type': requestType,
+        'priority': priority,
+        'location': location.text.trim(),
         'title': title.text.trim(),
         'description': description.text.trim(),
       });
     }
     title.dispose();
     description.dispose();
+    location.dispose();
   }
 
   Future<void> _quoteServiceRequest(Map<String, dynamic> request) async {
@@ -1950,11 +2048,42 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
                 row['property_management_services'] as Map<String, dynamic>? ??
                 {};
             final serviceTitle = service['title'] as String?;
+            final requestType = row['request_type'] as String? ?? 'service';
+            final typeLabel = gr
+                ? switch (requestType) {
+                    'damage_report' => 'Βλάβη',
+                    'maintenance' => 'Συντήρηση',
+                    'cleaning' => 'Καθαρισμός',
+                    'safety' => 'Ασφάλεια',
+                    'other' => 'Άλλο',
+                    _ => 'Υπηρεσία',
+                  }
+                : switch (requestType) {
+                    'damage_report' => 'Problem',
+                    'maintenance' => 'Maintenance',
+                    'cleaning' => 'Cleaning',
+                    'safety' => 'Safety',
+                    'other' => 'Other',
+                    _ => 'Service',
+                  };
+            final priority = row['priority'] as String? ?? 'normal';
+            final priorityLabel = gr
+                ? switch (priority) {
+                    'emergency' => 'Άμεσος κίνδυνος',
+                    'urgent' => 'Επείγον',
+                    _ => 'Κανονικό',
+                  }
+                : switch (priority) {
+                    'emergency' => 'Immediate danger',
+                    'urgent' => 'Urgent',
+                    _ => 'Normal',
+                  };
+            final location = (row['location'] as String? ?? '').trim();
             titleText =
-                '${row['title']}${serviceTitle == null ? '' : ' · $serviceTitle'}';
+                '$typeLabel · ${row['title']}${serviceTitle == null ? '' : ' · $serviceTitle'}';
             final quote = row['quote_amount'] as num?;
             subtitle =
-                '${row['status']}${quote == null ? '' : ' · ${_money(quote)}'}${(row['supplier'] as String? ?? '').isEmpty ? '' : ' · ${row['supplier']}'}${(row['description'] as String? ?? '').isEmpty ? '' : ' · ${row['description']}'}';
+                '$priorityLabel${location.isEmpty ? '' : ' · $location'} · ${row['status']}${quote == null ? '' : ' · ${_money(quote)}'}${(row['supplier'] as String? ?? '').isEmpty ? '' : ' · ${row['supplier']}'}${(row['description'] as String? ?? '').isEmpty ? '' : ' · ${row['description']}'}';
           } else if (type == 'claim') {
             final policy =
                 row['property_insurance_policies'] as Map<String, dynamic>? ??
@@ -2363,7 +2492,9 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
             'service',
           ),
           _section(
-            gr ? 'Αιτήματα πρόσθετων υπηρεσιών' : 'Additional service requests',
+            gr
+                ? 'Υπηρεσίες και αναφορές βλαβών'
+                : 'Services and problem reports',
             Icons.handyman_outlined,
             serviceRequests,
             _newServiceRequest,

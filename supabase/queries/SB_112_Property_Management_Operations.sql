@@ -306,4 +306,3 @@ CREATE POLICY property_management_docs_delete ON storage.objects
   );
 
 COMMIT;
-

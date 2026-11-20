@@ -474,11 +474,11 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
           const SizedBox(height: 10),
           OutlinedButton.icon(
             onPressed: _openManagement,
-            icon: const Icon(Icons.business_center_outlined),
+            icon: const Icon(Icons.handyman_outlined),
             label: Text(
               _isGreek
-                  ? 'Συμβάσεις · Υπηρεσίες · Ασφάλειες · Συνελεύσεις'
-                  : 'Contracts · Services · Insurance · Meetings',
+                  ? 'Υπηρεσίες · Αναφορά βλάβης · Διαχείριση'
+                  : 'Services · Report a problem · Management',
             ),
           ),
           if (isDraft) ...[
@@ -589,4 +589,3 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
     ),
   );
 }
-
