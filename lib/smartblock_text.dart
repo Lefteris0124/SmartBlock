@@ -369,12 +369,6 @@ class Text extends StatelessWidget {
       'ro': 'Proprietar / administrator',
       'he': 'בעלים / מנהל',
     },
-    'Properties, owners, votes, notices and finances.': {
-      'ru': 'Объекты, владельцы, голосования, объявления и финансы.',
-      'uk': 'Нерухомість, власники, голосування, оголошення та фінанси.',
-      'ro': 'Proprietăți, proprietari, voturi, anunțuri și finanțe.',
-      'he': 'נכסים, בעלים, הצבעות, הודעות וכספים.',
-    },
     'Resident': {
       'ru': 'Жилец',
       'uk': 'Мешканець',
