@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'admin_review_screen.dart';
 import 'properties_screen.dart';
+import 'support_chat_screen.dart';
 
 class SmartBlockDashboard extends StatefulWidget {
   const SmartBlockDashboard({super.key});
@@ -276,6 +277,20 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
                   : 'Features are separated by your role and assigned access.',
             ),
             const SizedBox(height: 20),
+            _RoleCard(
+              icon: Icons.support_agent_outlined,
+              title: access.isStaff
+                  ? (_greek ? 'Υποστήριξη χρηστών' : 'Support inbox')
+                  : (_greek ? 'Βοήθεια & chat' : 'Help chat'),
+              detail: access.isStaff
+                  ? (_greek
+                        ? 'Δες και απάντησε στα αιτήματα βοήθειας.'
+                        : 'View and reply to user help requests.')
+                  : (_greek
+                        ? 'Στείλε μήνυμα στην ομάδα SmartBlock.'
+                        : 'Message the SmartBlock support team.'),
+              onTap: () => _open(SupportChatScreen(isGreek: _greek)),
+            ),
             if (access.isStaff)
               _RoleCard(
                 icon: Icons.admin_panel_settings_outlined,
