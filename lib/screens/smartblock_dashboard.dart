@@ -1,9 +1,12 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'admin_review_screen.dart';
+import 'admin_billing_screen.dart';
 import 'properties_screen.dart';
 import 'support_chat_screen.dart';
+import '../app_language.dart';
+import '../smartblock_text.dart';
 
 class SmartBlockDashboard extends StatefulWidget {
   const SmartBlockDashboard({super.key});
@@ -17,19 +20,88 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
   late Future<_RoleAccess> _access = _loadAccess();
   bool _greek = true;
   dynamic _roleRequestChannel;
+  dynamic _billingNoticeChannel;
+  late final VoidCallback _languageListener;
+  late Future<List<Map<String, dynamic>>> _billingNotices;
 
   @override
   void initState() {
     super.initState();
+    final language = SmartBlockLanguageController.instance;
+    _greek = language.selected.value.isGreek;
+    _languageListener = () {
+      if (mounted) setState(() => _greek = language.selected.value.isGreek);
+    };
+    language.selected.addListener(_languageListener);
+    _billingNotices = _loadBillingNotices();
     _subscribeAdminNotifications();
+    _subscribeBillingNotifications();
   }
 
   @override
   void dispose() {
+    SmartBlockLanguageController.instance.selected.removeListener(
+      _languageListener,
+    );
     if (_roleRequestChannel != null) {
       _client.removeChannel(_roleRequestChannel);
     }
+    if (_billingNoticeChannel != null) {
+      _client.removeChannel(_billingNoticeChannel);
+    }
     super.dispose();
+  }
+
+  Future<List<Map<String, dynamic>>> _loadBillingNotices() async {
+    try {
+      final userId = _client.auth.currentUser?.id;
+      if (userId == null) return [];
+      return List<Map<String, dynamic>>.from(
+        await _client
+            .from('property_billing_notifications')
+            .select(
+              'id, property_id, apartment_monthly_eur, online_payment_fee_percent, effective_on, notification_kind, properties(name)',
+            )
+            .eq('recipient_id', userId)
+            .eq('is_read', false)
+            .order('created_at', ascending: false)
+            .limit(10),
+      );
+    } catch (_) {
+      return [];
+    }
+  }
+
+  void _subscribeBillingNotifications() {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return;
+    _billingNoticeChannel = _client
+        .channel('smartblock-billing-notices-$userId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'property_billing_notifications',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'recipient_id',
+            value: userId,
+          ),
+          callback: (_) {
+            if (mounted)
+              setState(() => _billingNotices = _loadBillingNotices());
+          },
+        )
+        .subscribe();
+  }
+
+  Future<void> _markBillingNoticeRead(String id) async {
+    try {
+      await _client
+          .from('property_billing_notifications')
+          .update({'is_read': true})
+          .eq('id', id);
+      if (mounted) setState(() => _billingNotices = _loadBillingNotices());
+    } catch (_) {}
   }
 
   Future<void> _subscribeAdminNotifications() async {
@@ -93,6 +165,7 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
       _client.rpc('list_my_resident_properties'),
       _client.from('properties').select('id').limit(1),
       _client.rpc('list_my_account_role_request'),
+      _client.rpc('is_smartblock_admin'),
     ]);
     var requestRows = List<Map<String, dynamic>>.from(results[3] as List);
     if (requestRows.isEmpty &&
@@ -118,6 +191,7 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
     }
     return _RoleAccess(
       isStaff: results[0] == true,
+      isAdmin: results[4] == true,
       residentCount: (results[1] as List).length,
       ownerHasProperties: (results[2] as List).isNotEmpty,
       registration: requestRows.isEmpty ? null : requestRows.first,
@@ -224,11 +298,7 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
     appBar: AppBar(
       title: const Text('SmartBlock'),
       actions: [
-        IconButton(
-          tooltip: _greek ? 'English' : 'Ελληνικά',
-          onPressed: () => setState(() => _greek = !_greek),
-          icon: const Icon(Icons.language),
-        ),
+        const SmartBlockLanguageMenu(),
         IconButton(
           tooltip: _greek ? 'Αποσύνδεση' : 'Sign out',
           onPressed: () => _client.auth.signOut(),
@@ -274,7 +344,8 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
           (registration?['requested_roles'] as List?) ?? const [],
         );
         final showOwner =
-            approvedRoles.contains('property_owner') || access.ownerHasProperties;
+            approvedRoles.contains('property_owner') ||
+            access.ownerHasProperties;
         final showResident =
             approvedRoles.contains('tenant') ||
             (status == null && access.residentCount > 0);
@@ -286,18 +357,132 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
         return ListView(
           padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
           children: [
-            Text(
-              _greek ? 'Πού θέλεις να πας;' : 'Where would you like to go?',
-              style: Theme.of(context).textTheme.headlineSmall
-                  ?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _greek
-                  ? 'Οι λειτουργίες εμφανίζονται ανάλογα με τον ρόλο και την πρόσβασή σου.'
-                  : 'Features are separated by your role and assigned access.',
+            Container(
+              padding: const EdgeInsets.all(22),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF245B73), Color(0xFF438F83)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF245B73).withOpacity(.16),
+                    blurRadius: 18,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 54,
+                    height: 54,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(.16),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: const Icon(
+                      Icons.apartment_rounded,
+                      color: Colors.white,
+                      size: 29,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _greek
+                              ? 'Πού θέλεις να πας;'
+                              : 'Where would you like to go?',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleLarge
+                              ?.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          _greek
+                              ? 'Οι λειτουργίες εμφανίζονται ανάλογα με τον ρόλο και την πρόσβασή σου.'
+                              : 'Your features are organized around your role and access.',
+                          style: const TextStyle(
+                            color: Color(0xFFE6F1F0),
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 20),
+            if (access.isAdmin)
+              _RoleCard(
+                icon: Icons.price_change_outlined,
+                title: _greek ? 'Χρεώσεις SmartBlock' : 'SmartBlock billing',
+                detail: _greek
+                    ? 'Ρύθμισε τιμή ανά διαμέρισμα, προμήθεια και ημερομηνίες ισχύος.'
+                    : 'Set per-apartment pricing, payment fee and effective dates.',
+                onTap: () => _open(const AdminBillingScreen()),
+              )
+            else
+              FutureBuilder<List<Map<String, dynamic>>>(
+                future: _billingNotices,
+                builder: (context, noticeSnapshot) {
+                  final notices = noticeSnapshot.data ?? const [];
+                  if (notices.isEmpty) return const SizedBox.shrink();
+                  return Column(
+                    children: notices.map((notice) {
+                      final property =
+                          notice['properties'] as Map<String, dynamic>? ?? {};
+                      final name =
+                          property['name'] as String? ??
+                          (_greek ? 'Το ακίνητό σου' : 'Your property');
+                      final wasCancelled =
+                          notice['notification_kind'] == 'cancelled';
+                      return Card(
+                        child: ListTile(
+                          leading: const Icon(
+                            Icons.notifications_active_outlined,
+                          ),
+                          title: Text(
+                            wasCancelled
+                                ? (_greek
+                                      ? 'Ακυρώθηκε αλλαγή χρεώσεων · $name'
+                                      : 'Billing change cancelled · $name')
+                                : (_greek
+                                      ? 'Ενημέρωση χρεώσεων · $name'
+                                      : 'Billing update · $name'),
+                          ),
+                          subtitle: Text(
+                            wasCancelled
+                                ? (_greek
+                                      ? 'Η προγραμματισμένη αλλαγή για ${notice['effective_on']} ακυρώθηκε. Ισχύουν οι προηγούμενες χρεώσεις.'
+                                      : 'The scheduled change for ${notice['effective_on']} was cancelled. The previous rates remain in effect.')
+                                : (_greek
+                                      ? 'Από ${notice['effective_on']}: €${notice['apartment_monthly_eur']} ανά διαμέρισμα/μήνα και προμήθεια ${notice['online_payment_fee_percent']}%.'
+                                      : 'From ${notice['effective_on']}: €${notice['apartment_monthly_eur']} per apartment/month and a ${notice['online_payment_fee_percent']}% payment fee.'),
+                          ),
+                          trailing: IconButton(
+                            tooltip: _greek ? 'Εντάξει' : 'Dismiss',
+                            icon: const Icon(Icons.done),
+                            onPressed: () =>
+                                _markBillingNoticeRead(notice['id'] as String),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
+            const SizedBox(height: 8),
             _RoleCard(
               icon: Icons.support_agent_outlined,
               title: access.isStaff
@@ -424,12 +609,14 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
 class _RoleAccess {
   const _RoleAccess({
     required this.isStaff,
+    required this.isAdmin,
     required this.residentCount,
     required this.ownerHasProperties,
     required this.registration,
   });
 
   final bool isStaff;
+  final bool isAdmin;
   final int residentCount;
   final bool ownerHasProperties;
   final Map<String, dynamic>? registration;
@@ -449,18 +636,47 @@ class _RoleCard extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => Card(
-    margin: const EdgeInsets.only(bottom: 12),
-    child: ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-      leading: CircleAvatar(child: Icon(icon)),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-      subtitle: Padding(
-        padding: const EdgeInsets.only(top: 5),
-        child: Text(detail),
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final iconColor = icon == Icons.home_outlined
+        ? const Color(0xFF438F83)
+        : colors.primary;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      clipBehavior: Clip.antiAlias,
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 18,
+          vertical: 12,
+        ),
+        leading: Container(
+          width: 50,
+          height: 50,
+          decoration: BoxDecoration(
+            color: iconColor.withOpacity(.11),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Icon(icon, color: iconColor, size: 26),
+        ),
+        title: Text(
+          title,
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+            color: const Color(0xFF17364A),
+          ),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 5),
+          child: Text(
+            detail,
+            style: TextStyle(color: colors.onSurfaceVariant, height: 1.35),
+          ),
+        ),
+        trailing: Icon(Icons.arrow_forward_ios_rounded,
+            size: 16, color: colors.primary.withOpacity(.7)),
+        onTap: onTap,
       ),
-      trailing: const Icon(Icons.chevron_right),
-      onTap: onTap,
-    ),
-  );
+    );
+  }
 }
+

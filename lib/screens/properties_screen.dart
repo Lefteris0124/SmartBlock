@@ -1,10 +1,12 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'property_details_screen.dart';
 import 'admin_review_screen.dart';
 import 'resident_service_requests_screen.dart';
+import '../app_language.dart';
+import '../smartblock_text.dart';
 
 enum PropertiesViewMode { all, owner, resident }
 
@@ -32,12 +34,24 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
   final _client = Supabase.instance.client;
   late Future<List<Map<String, dynamic>>> _propertiesFuture;
   late bool _greek;
+  late final VoidCallback _languageListener;
 
   @override
   void initState() {
     super.initState();
-    _greek = widget.isGreek;
+    final language = SmartBlockLanguageController.instance;
+    _greek = language.selected.value.isGreek;
+    _languageListener = () {
+      if (mounted) setState(() => _greek = language.selected.value.isGreek);
+    };
+    language.selected.addListener(_languageListener);
     _propertiesFuture = _load();
+  }
+
+  @override
+  void dispose() {
+    SmartBlockLanguageController.instance.selected.removeListener(_languageListener);
+    super.dispose();
   }
 
   Future<List<Map<String, dynamic>>> _load() async {
@@ -46,7 +60,7 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
       var query = _client
           .from('properties')
           .select(
-            'id, name, property_type, other_description, total_apartments, address, city, country, management_model, approval_status, organization_id, created_by',
+            'id, name, property_type, building_model, portfolio_id, other_description, total_apartments, address, city, country, management_model, approval_status, organization_id, created_by',
           );
       final userId = _client.auth.currentUser?.id;
       if (widget.organizationId != null && userId != null) {
@@ -97,6 +111,19 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
     } catch (_) {}
   }
 
+  IconData _propertyIcon(String? type, {required bool resident}) {
+    if (resident || type == 'apartment') return Icons.apartment_rounded;
+    return switch (type) {
+      'building' => Icons.domain_rounded,
+      'house' => Icons.home_rounded,
+      'shop' => Icons.storefront_rounded,
+      'office' => Icons.business_center_rounded,
+      'warehouse' => Icons.warehouse_rounded,
+      'land' => Icons.landscape_rounded,
+      _ => Icons.holiday_village_rounded,
+    };
+  }
+
   Future<void> _createProperty() async {
     final name = TextEditingController();
     final address = TextEditingController();
@@ -105,6 +132,7 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
     final apartments = TextEditingController();
     final form = GlobalKey<FormState>();
     var type = 'apartment';
+    var buildingModel = 'physical';
     var model = 'self_service';
     var saving = false;
     Map<String, dynamic>? matchingBuilding;
@@ -149,6 +177,36 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
                             },
                     ),
                     if (type == 'building') ...[
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        value: buildingModel,
+                        decoration: InputDecoration(
+                          labelText: _greek
+                              ? 'Μορφή πολυκατοικίας'
+                              : 'Building type',
+                        ),
+                        items: [
+                          _option(
+                            'physical',
+                            _greek
+                                ? 'Πραγματική πολυκατοικία — 5 € ανά διαμέρισμα/μήνα'
+                                : 'Physical building — €5 per apartment/month',
+                          ),
+                          _option(
+                            'virtual',
+                            _greek
+                                ? 'Εικονική πολυκατοικία/χαρτοφυλάκιο — 5% στις πληρωμές'
+                                : 'Virtual building/portfolio — 5% on payments',
+                          ),
+                        ],
+                        onChanged: saving
+                            ? null
+                            : (value) {
+                                if (value != null) {
+                                  setDialog(() => buildingModel = value);
+                                }
+                              },
+                      ),
                       const SizedBox(height: 12),
                       TextFormField(
                         controller: apartments,
@@ -291,6 +349,9 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
                             'p_total_apartments': type == 'building'
                                 ? int.parse(apartments.text.trim())
                                 : null,
+                            'p_building_model': type == 'building'
+                                ? buildingModel
+                                : 'physical',
                           },
                         );
                         if (ctx.mounted) Navigator.pop(ctx, id != null);
@@ -635,10 +696,7 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
                 : (_greek ? 'Τα ακίνητά μου' : 'My properties')),
       ),
       actions: [
-        IconButton(
-          onPressed: () => setState(() => _greek = !_greek),
-          icon: const Icon(Icons.language),
-        ),
+        const SmartBlockLanguageMenu(),
         FutureBuilder<dynamic>(
           future: _client.rpc('is_smartblock_staff'),
           builder: (context, snapshot) => snapshot.data == true
@@ -776,9 +834,28 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
               else
                 ...properties.map(
                   (p) => Card(
+                    clipBehavior: Clip.antiAlias,
                     child: ListTile(
-                      leading: const CircleAvatar(
-                        child: Icon(Icons.apartment_outlined),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 10,
+                      ),
+                      leading: Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .primaryContainer,
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                        child: Icon(
+                          _propertyIcon(
+                            p['property_type'] as String?,
+                            resident: p['_resident_only'] == true,
+                          ),
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
                       ),
                       title: Text(p['name'] as String? ?? ''),
                       subtitle: Text(
@@ -811,7 +888,11 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
                                   .where((s) => s.isNotEmpty)
                                   .join(' · '),
                       ),
-                      trailing: const Icon(Icons.chevron_right),
+                      trailing: Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        size: 16,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
                       onTap: () async {
                         if (p['_resident_only'] == true) {
                           await Navigator.push(
@@ -855,3 +936,4 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
     ),
   );
 }
+

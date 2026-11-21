@@ -1,8 +1,9 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'property_details_screen.dart';
+import '../smartblock_text.dart';
 
 class AdminReviewScreen extends StatefulWidget {
   const AdminReviewScreen({required this.isGreek, super.key});
@@ -59,7 +60,7 @@ class _AdminReviewScreenState extends State<AdminReviewScreen>
         await db
             .from('properties')
             .select(
-              'id, name, property_type, other_description, total_apartments, apartment_id, address, city, country, management_model, approval_status, organization_id, created_by, organizations(display_name, approval_status)',
+              'id, name, property_type, building_model, other_description, total_apartments, apartment_id, address, city, country, management_model, approval_status, organization_id, created_by, organizations(display_name, approval_status)',
             )
             .order('created_at', ascending: false),
       );
@@ -389,6 +390,7 @@ class _AdminReviewScreenState extends State<AdminReviewScreen>
     final apartments = TextEditingController(text: '${current['total_apartments'] ?? ''}');
     final form = GlobalKey<FormState>();
     var kind = current['property_type'] as String? ?? 'apartment';
+    var buildingModel = current['building_model'] as String? ?? 'physical';
     var model = current['management_model'] as String? ?? 'self_service';
     var status = current['approval_status'] as String? ?? 'draft';
     final saved = await showDialog<bool>(
@@ -403,6 +405,7 @@ class _AdminReviewScreenState extends State<AdminReviewScreen>
                 ['apartment',gr?'Διαμέρισμα':'Apartment'],['building',gr?'Πολυκατοικία':'Apartment building'],['house',gr?'Κατοικία':'House'],['shop',gr?'Κατάστημα':'Shop'],['office',gr?'Γραφείο':'Office'],['warehouse',gr?'Αποθήκη':'Warehouse'],['land',gr?'Οικόπεδο':'Land'],['other',gr?'Άλλο':'Other']
               ].map((x)=>DropdownMenuItem(value:x[0],child:Text(x[1]))).toList(), onChanged:(v){if(v!=null)setDialog(()=>kind=v);}),
               if (kind == 'building') TextFormField(controller:apartments,keyboardType:TextInputType.number,decoration:InputDecoration(labelText:gr?'Συνολικά διαμερίσματα':'Total apartments'),validator:(v)=>(int.tryParse((v??'').trim())??0)<1?(gr?'Βάλε έγκυρο αριθμό.':'Enter a valid count.'):null),
+              if (kind == 'building') DropdownButtonFormField<String>(value:buildingModel,decoration:InputDecoration(labelText:gr?'Μορφή πολυκατοικίας':'Building type'),items:[['physical',gr?'Πραγματική — 5 € ανά διαμέρισμα/μήνα':'Physical — €5 per apartment/month'],['virtual',gr?'Εικονική — 5% στις πληρωμές':'Virtual — 5% on payments']].map((x)=>DropdownMenuItem(value:x[0],child:Text(x[1]))).toList(),onChanged:(v){if(v!=null)setDialog(()=>buildingModel=v);}),
               if (kind == 'other') TextFormField(controller: other, decoration: InputDecoration(labelText: gr ? 'Προσδιορισμός άλλου τύπου' : 'Specify other type'), validator:(v)=>(v??'').trim().isEmpty?(gr?'Συμπλήρωσε τον τύπο.':'Specify the type.'):null),
               TextFormField(controller:name, decoration:InputDecoration(labelText:gr?'Όνομα ακινήτου':'Property name'), validator:(v)=>(v??'').trim().isEmpty?(gr?'Συμπλήρωσε το όνομα.':'Enter a name.'):null),
               TextFormField(controller:address, decoration:InputDecoration(labelText:gr?'Διεύθυνση':'Address'),validator:(v)=>(v??'').trim().isEmpty?(gr?'Συμπλήρωσε τη διεύθυνση.':'Enter an address.'):null),
@@ -422,6 +425,7 @@ class _AdminReviewScreenState extends State<AdminReviewScreen>
           'city':city.text.trim().isEmpty?null:city.text.trim(), 'property_type':kind,
           'other_description':kind=='other'?other.text.trim():null,
           'total_apartments':kind=='building'?int.parse(apartments.text.trim()):null,
+          'building_model':kind=='building'?buildingModel:'physical',
           'management_model':model,'approval_status':status,
           'updated_at':DateTime.now().toUtc().toIso8601String(),
         };
@@ -655,6 +659,7 @@ class _AdminReviewScreenState extends State<AdminReviewScreen>
     ]),
   );
 }
+
 
 
 

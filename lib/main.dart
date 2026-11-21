@@ -1,9 +1,12 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'app_language.dart';
 import 'screens/smartblock_dashboard.dart';
+import 'smartblock_text.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,20 +20,108 @@ Future<void> main() async {
   runApp(const SmartBlockApp());
 }
 
-class SmartBlockApp extends StatelessWidget {
+class SmartBlockApp extends StatefulWidget {
   const SmartBlockApp({super.key});
 
   @override
+  State<SmartBlockApp> createState() => _SmartBlockAppState();
+}
+
+class _SmartBlockAppState extends State<SmartBlockApp> {
+  @override
+  void initState() {
+    super.initState();
+    _initializeLanguage();
+  }
+
+  Future<void> _initializeLanguage() async {
+    await SmartBlockLanguageController.instance.initialize();
+    await SmartBlockLanguageController.instance.syncAfterSignIn();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'SmartBlock',
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF176B87)),
-        fontFamily: 'Roboto',
+    return ValueListenableBuilder<SmartBlockLanguage>(
+      valueListenable: SmartBlockLanguageController.instance.selected,
+      builder: (context, language, _) => MaterialApp(
+        debugShowCheckedModeBanner: false,
+        title: 'SmartBlock',
+        locale: language.locale,
+        supportedLocales: SmartBlockLanguages.supported
+            .map((item) => item.locale)
+            .toList(growable: false),
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        theme: ThemeData(
+          useMaterial3: true,
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: const Color(0xFF245B73),
+            brightness: Brightness.light,
+          ).copyWith(
+            primary: const Color(0xFF245B73),
+            secondary: const Color(0xFF438F83),
+            surface: const Color(0xFFFFFEFC),
+            surfaceContainerHighest: const Color(0xFFEAF1F2),
+          ),
+          scaffoldBackgroundColor: const Color(0xFFF4F7F7),
+          appBarTheme: const AppBarTheme(
+            backgroundColor: Color(0xFFF4F7F7),
+            foregroundColor: Color(0xFF17364A),
+            elevation: 0,
+            scrolledUnderElevation: 1,
+            centerTitle: false,
+          ),
+          inputDecorationTheme: InputDecorationTheme(
+            filled: true,
+            fillColor: const Color(0xFFF8FAFA),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Color(0xFFD9E3E5)),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Color(0xFFD9E3E5)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(
+                color: Color(0xFF245B73),
+                width: 1.7,
+              ),
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14,
+            ),
+          ),
+          filledButtonTheme: FilledButtonThemeData(
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(48, 48),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+          ),
+          cardTheme: CardThemeData(
+            color: const Color(0xFFFFFEFC),
+            elevation: 0,
+            margin: const EdgeInsets.only(bottom: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+              side: const BorderSide(color: Color(0xFFE4EBEC)),
+            ),
+          ),
+          fontFamily: 'Roboto',
+        ),
+        home: const CheckoutReturnNotice(child: AuthGate()),
+        builder: (context, child) => Directionality(
+          textDirection: language.isRtl ? TextDirection.rtl : TextDirection.ltr,
+          child: child ?? const SizedBox.shrink(),
+        ),
       ),
-      home: const CheckoutReturnNotice(child: AuthGate()),
     );
   }
 }
@@ -105,9 +196,24 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
   bool _isBusy = false;
   bool _showPassword = false;
   bool _isGreek = true;
+  late final VoidCallback _languageListener;
+
+  @override
+  void initState() {
+    super.initState();
+    final language = SmartBlockLanguageController.instance;
+    _isGreek = language.selected.value.isGreek;
+    _languageListener = () {
+      if (mounted) setState(() => _isGreek = language.selected.value.isGreek);
+    };
+    language.selected.addListener(_languageListener);
+  }
 
   @override
   void dispose() {
+    SmartBlockLanguageController.instance.selected.removeListener(
+      _languageListener,
+    );
     _passwordController.dispose();
     _confirmController.dispose();
     super.dispose();
@@ -156,10 +262,7 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
                   children: [
                     Align(
                       alignment: Alignment.centerRight,
-                      child: TextButton(
-                        onPressed: () => setState(() => _isGreek = !_isGreek),
-                        child: Text(_isGreek ? 'English' : 'Ελληνικά'),
-                      ),
+                      child: const SmartBlockLanguageMenu(iconOnly: false),
                     ),
                     const Icon(
                       Icons.lock_reset_rounded,
@@ -259,12 +362,27 @@ class _LoginScreenState extends State<LoginScreen> {
   bool isCreatingAccount = false;
   bool isBusy = false;
   final Set<String> requestedRoles = {};
+  late final VoidCallback _languageListener;
   String get _authRedirectUrl => kIsWeb
       ? Uri.base.origin + Uri.base.path
       : 'io.supabase.smartblock://login-callback';
 
   @override
+  void initState() {
+    super.initState();
+    final language = SmartBlockLanguageController.instance;
+    isGreek = language.selected.value.isGreek;
+    _languageListener = () {
+      if (mounted) setState(() => isGreek = language.selected.value.isGreek);
+    };
+    language.selected.addListener(_languageListener);
+  }
+
+  @override
   void dispose() {
+    SmartBlockLanguageController.instance.selected.removeListener(
+      _languageListener,
+    );
     emailController.dispose();
     passwordController.dispose();
     super.dispose();
@@ -312,7 +430,11 @@ class _LoginScreenState extends State<LoginScreen> {
           email: email,
           password: password,
           emailRedirectTo: _authRedirectUrl,
-          data: {'requested_roles': requestedRoles.toList()},
+          data: {
+            'requested_roles': requestedRoles.toList(),
+            'preferred_language':
+                SmartBlockLanguageController.instance.selected.value.code,
+          },
         );
         if (!mounted) return;
         if (response.session == null) {
@@ -333,6 +455,7 @@ class _LoginScreenState extends State<LoginScreen> {
           email: email,
           password: password,
         );
+        await SmartBlockLanguageController.instance.syncAfterSignIn();
         if (!mounted) return;
         _showMessage(isGreek ? 'Επιτυχής σύνδεση!' : 'Signed in successfully.');
       }
@@ -497,13 +620,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 children: [
                   Align(
                     alignment: Alignment.centerRight,
-                    child: TextButton.icon(
-                      onPressed: () {
-                        setState(() => isGreek = !isGreek);
-                      },
-                      icon: const Icon(Icons.language),
-                      label: Text(isGreek ? 'English' : 'Ελληνικά'),
-                    ),
+                    child: const SmartBlockLanguageMenu(iconOnly: false),
                   ),
                   const SizedBox(height: 20),
                   Container(
@@ -567,7 +684,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         FilterChip(
                           selected: requestedRoles.contains('property_owner'),
                           avatar: const Icon(Icons.apartment_outlined),
-                          label: Text(isGreek ? 'Ιδιοκτήτης' : 'Property owner'),
+                          label: Text(
+                            isGreek ? 'Ιδιοκτήτης' : 'Property owner',
+                          ),
                           onSelected: isBusy
                               ? null
                               : (selected) => setState(() {
@@ -766,3 +885,4 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
+

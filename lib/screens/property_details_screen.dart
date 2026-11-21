@@ -1,5 +1,7 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../app_language.dart';
+import '../smartblock_text.dart';
 
 import 'property_owners_screen.dart';
 import 'property_modules_screen.dart';
@@ -46,14 +48,26 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
   late Future<_ReviewReadiness> _reviewReadinessFuture;
   late Future<List<Map<String, dynamic>>> _ownersFuture;
   bool _isSubmitting = false;
+  late final VoidCallback _languageListener;
 
   @override
   void initState() {
     super.initState();
     _property = Map<String, dynamic>.from(widget.property);
-    _isGreek = widget.isGreek;
+    final language = SmartBlockLanguageController.instance;
+    _isGreek = language.selected.value.isGreek;
+    _languageListener = () {
+      if (mounted) setState(() => _isGreek = language.selected.value.isGreek);
+    };
+    language.selected.addListener(_languageListener);
     _reviewReadinessFuture = _loadReviewReadiness();
     _ownersFuture = _loadOwners();
+  }
+
+  @override
+  void dispose() {
+    SmartBlockLanguageController.instance.selected.removeListener(_languageListener);
+    super.dispose();
   }
 
   Future<List<Map<String, dynamic>>> _loadOwners() async =>
@@ -290,11 +304,7 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
       appBar: AppBar(
         title: Text(_isGreek ? 'Στοιχεία ακινήτου' : 'Property details'),
         actions: [
-          IconButton(
-            tooltip: _isGreek ? 'English' : 'Ελληνικά',
-            onPressed: () => setState(() => _isGreek = !_isGreek),
-            icon: const Icon(Icons.language),
-          ),
+          const SmartBlockLanguageMenu(),
         ],
       ),
       body: ListView(
@@ -320,6 +330,20 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
                 ? '${_typeLabel('other')}: ${_property['other_description'] ?? ''}'
                 : _typeLabel(_property['property_type'] as String?),
           ),
+          if (_property['property_type'] == 'building' ||
+              _property['portfolio_id'] != null)
+            _detailTile(
+              Icons.account_balance_outlined,
+              _isGreek ? 'Μορφή πολυκατοικίας' : 'Building type',
+              (_property['building_model'] == 'virtual' ||
+                      _property['portfolio_id'] != null)
+                  ? (_isGreek
+                        ? 'Εικονική — 5% στις πληρωμές μέσω SmartBlock'
+                        : 'Virtual — 5% on payments through SmartBlock')
+                  : (_isGreek
+                        ? 'Πραγματική — 5 € ανά διαμέρισμα/μήνα'
+                        : 'Physical — €5 per apartment/month'),
+            ),
           _detailTile(
             Icons.location_on_outlined,
             _isGreek ? 'Τοποθεσία' : 'Location',
@@ -590,3 +614,4 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
     ),
   );
 }
+

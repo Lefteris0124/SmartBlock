@@ -1,8 +1,10 @@
 import 'dart:typed_data';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../app_language.dart';
+import '../smartblock_text.dart';
 
 class PropertyOwnersScreen extends StatefulWidget {
   const PropertyOwnersScreen({
@@ -29,13 +31,25 @@ class _PropertyOwnersScreenState extends State<PropertyOwnersScreen> {
   bool _isPropertyCreator = false;
   int? _totalApartments;
   Set<String> _manageableOrganizations = {};
+  late final VoidCallback _languageListener;
 
   @override
   void initState() {
     super.initState();
-    _greek = widget.isGreek;
+    final language = SmartBlockLanguageController.instance;
+    _greek = language.selected.value.isGreek;
+    _languageListener = () {
+      if (mounted) setState(() => _greek = language.selected.value.isGreek);
+    };
+    language.selected.addListener(_languageListener);
     _future = _load();
     _loadAccess();
+  }
+
+  @override
+  void dispose() {
+    SmartBlockLanguageController.instance.selected.removeListener(_languageListener);
+    super.dispose();
   }
 
   Future<void> _loadAccess() async {
@@ -367,7 +381,7 @@ class _PropertyOwnersScreenState extends State<PropertyOwnersScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(_greek ? 'Ιδιοκτήτες' : 'Owners'), actions: [IconButton(onPressed: () => setState(() => _greek = !_greek), icon: const Icon(Icons.language))]),
+    appBar: AppBar(title: Text(_greek ? 'Ιδιοκτήτες' : 'Owners'), actions: [const SmartBlockLanguageMenu()]),
     floatingActionButton: FloatingActionButton.extended(onPressed: _addOwner, icon: const Icon(Icons.person_add_alt_1), label: Text(_greek ? 'Προσθήκη ιδιοκτήτη' : 'Add owner')),
     body: RefreshIndicator(onRefresh: _refresh, child: FutureBuilder<List<Map<String, dynamic>>>(future: _future, builder: (ctx, snap) {
       final owners = snap.data ?? [];
@@ -402,4 +416,5 @@ class _PropertyOwnersScreenState extends State<PropertyOwnersScreen> {
     })),
   );
 }
+
 

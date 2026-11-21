@@ -1,5 +1,6 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../smartblock_text.dart';
 
 class ResidentServiceRequestsScreen extends StatefulWidget {
   const ResidentServiceRequestsScreen({
@@ -461,3 +462,4 @@ class _ResidentServiceRequestsScreenState
     ),
   );
 }
+

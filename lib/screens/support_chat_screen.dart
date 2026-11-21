@@ -1,5 +1,6 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../smartblock_text.dart';
 
 class SupportChatScreen extends StatefulWidget {
   const SupportChatScreen({required this.isGreek, super.key});
@@ -662,3 +663,4 @@ class _SupportConversationScreenState extends State<SupportConversationScreen> {
     );
   }
 }
+
