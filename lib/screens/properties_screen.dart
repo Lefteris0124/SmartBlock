@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'property_details_screen.dart';
@@ -55,9 +56,11 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
       } else if (widget.organizationId != null) {
         query = query.eq('organization_id', widget.organizationId!);
       }
-      rows.addAll(List<Map<String, dynamic>>.from(
-        await query.order('created_at', ascending: false),
-      ));
+      rows.addAll(
+        List<Map<String, dynamic>>.from(
+          await query.order('created_at', ascending: false),
+        ),
+      );
     }
     final fullAccessPropertyIds = rows
         .map((property) => property['id'] as String)
@@ -104,6 +107,7 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
     var type = 'apartment';
     var model = 'self_service';
     var saving = false;
+    Map<String, dynamic>? matchingBuilding;
     final saved = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -201,6 +205,7 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
                       decoration: InputDecoration(
                         labelText: _greek ? 'Πόλη' : 'City',
                       ),
+                      validator: _required,
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
@@ -254,6 +259,23 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
                       if (!form.currentState!.validate()) return;
                       setDialog(() => saving = true);
                       try {
+                        if (type == 'building') {
+                          final matches = List<Map<String, dynamic>>.from(
+                            await _client.rpc(
+                              'find_matching_buildings',
+                              params: {
+                                'p_address': address.text.trim(),
+                                'p_city': city.text.trim(),
+                                'p_country': 'Cyprus',
+                              },
+                            ),
+                          );
+                          if (matches.isNotEmpty) {
+                            matchingBuilding = matches.first;
+                            if (ctx.mounted) Navigator.pop(ctx, false);
+                            return;
+                          }
+                        }
                         final id = await _client.rpc(
                           'create_property_draft_with_units',
                           params: {
@@ -273,6 +295,25 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
                         );
                         if (ctx.mounted) Navigator.pop(ctx, id != null);
                       } on PostgrestException catch (e) {
+                        if (type == 'building' && e.code == '23505') {
+                          try {
+                            final matches = List<Map<String, dynamic>>.from(
+                              await _client.rpc(
+                                'find_matching_buildings',
+                                params: {
+                                  'p_address': address.text.trim(),
+                                  'p_city': city.text.trim(),
+                                  'p_country': 'Cyprus',
+                                },
+                              ),
+                            );
+                            if (matches.isNotEmpty) {
+                              matchingBuilding = matches.first;
+                              if (ctx.mounted) Navigator.pop(ctx, false);
+                              return;
+                            }
+                          } catch (_) {}
+                        }
                         if (ctx.mounted) {
                           setDialog(() => saving = false);
                           ScaffoldMessenger.of(ctx)
@@ -297,6 +338,243 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
     other.dispose();
     apartments.dispose();
     if (saved == true && mounted) await _refresh();
+    if (matchingBuilding != null && mounted) {
+      await _requestManagerClaim(matchingBuilding!);
+    }
+  }
+
+  Future<void> _requestManagerClaim(Map<String, dynamic> building) async {
+    final status = building['approval_status'] as String?;
+    if (status != 'approved') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _greek
+                ? 'Βρέθηκε ήδη καταχώριση για αυτή τη διεύθυνση. Είναι ακόμη υπό έλεγχο, οπότε δεν μπορεί να δημιουργηθεί δεύτερη.'
+                : 'A building record already exists at this address. It is still under review, so a second record cannot be created.',
+          ),
+        ),
+      );
+      return;
+    }
+    if (building['has_manager'] == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _greek
+                ? 'Η πολυκατοικία υπάρχει ήδη και έχει επαληθευμένο διαχειριστή.'
+                : 'This building already has a verified manager.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final authority = TextEditingController();
+    final form = GlobalKey<FormState>();
+    PlatformFile? proof;
+    var sending = false;
+    final sent = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialog) => AlertDialog(
+          title: Text(_greek ? 'Αίτημα διαχειριστή' : 'Request manager access'),
+          content: SizedBox(
+            width: 440,
+            child: Form(
+              key: form,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '${building['name']}\n${building['address']}, ${building['city']}',
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: authority,
+                    minLines: 3,
+                    maxLines: 5,
+                    maxLength: 2000,
+                    decoration: InputDecoration(
+                      labelText: _greek
+                          ? 'Πώς έχεις εξουσιοδοτηθεί να διαχειρίζεσαι το ακίνητο;'
+                          : 'How are you authorized to manage this building?',
+                      border: const OutlineInputBorder(),
+                      alignLabelWithHint: true,
+                    ),
+                    validator: (value) => (value?.trim().length ?? 0) < 10
+                        ? (_greek
+                              ? 'Πρόσθεσε λίγες λεπτομέρειες.'
+                              : 'Add a few details.')
+                        : null,
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: sending
+                        ? null
+                        : () async {
+                            final file = await FilePicker.pickFile(
+                              type: FileType.custom,
+                              allowedExtensions: [
+                                'pdf',
+                                'jpg',
+                                'jpeg',
+                                'png',
+                                'webp',
+                              ],
+                            );
+                            if (file == null || !dialogContext.mounted) return;
+                            final size = await file.length();
+                            if (!dialogContext.mounted) return;
+                            if (size == null || size > 10 * 1024 * 1024) {
+                              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    _greek
+                                        ? 'Το έγγραφο πρέπει να είναι έως 10 MB.'
+                                        : 'The document must be 10 MB or smaller.',
+                                  ),
+                                ),
+                              );
+                              return;
+                            }
+                            setDialog(() => proof = file);
+                          },
+                    icon: const Icon(Icons.attach_file),
+                    label: Text(
+                      proof?.name ??
+                          (_greek
+                              ? 'Επισύναψε αποδεικτικό ορισμού'
+                              : 'Attach proof of appointment'),
+                    ),
+                  ),
+                  Text(
+                    _greek
+                        ? 'Ο admin θα ελέγξει το έγγραφο πριν σου δώσει πρόσβαση διαχειριστή.'
+                        : 'An admin will verify the document before granting manager access.',
+                    style: Theme.of(dialogContext).textTheme.bodySmall,
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: sending
+                  ? null
+                  : () => Navigator.pop(dialogContext, false),
+              child: Text(_greek ? 'Άκυρο' : 'Cancel'),
+            ),
+            FilledButton(
+              onPressed: sending
+                  ? null
+                  : () async {
+                      if (!form.currentState!.validate()) return;
+                      if (proof == null) {
+                        ScaffoldMessenger.of(dialogContext).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              _greek
+                                  ? 'Επισύναψε το έγγραφο ορισμού.'
+                                  : 'Attach your appointment document.',
+                            ),
+                          ),
+                        );
+                        return;
+                      }
+                      setDialog(() => sending = true);
+                      String? path;
+                      try {
+                        final userId = _client.auth.currentUser!.id;
+                        final propertyId = building['property_id'] as String;
+                        final extension = (proof!.extension ?? '')
+                            .toLowerCase();
+                        final mime = switch (extension) {
+                          'pdf' => 'application/pdf',
+                          'png' => 'image/png',
+                          'webp' => 'image/webp',
+                          'jpg' || 'jpeg' => 'image/jpeg',
+                          _ => throw StateError('Unsupported proof document.'),
+                        };
+                        final safeName = proof!.name.replaceAll(
+                          RegExp(r'[^A-Za-z0-9._-]'),
+                          '_',
+                        );
+                        path =
+                            '$userId/$propertyId/'
+                            '${DateTime.now().microsecondsSinceEpoch}_$safeName';
+                        await _client.storage
+                            .from('smartblock-manager-proofs')
+                            .uploadBinary(
+                              path,
+                              await proof!.readAsBytes(),
+                              fileOptions: FileOptions(contentType: mime),
+                            );
+                        await _client.rpc(
+                          'request_property_manager',
+                          params: {
+                            'p_property_id': propertyId,
+                            'p_authority_note': authority.text.trim(),
+                            'p_authority_document_path': path,
+                          },
+                        );
+                        if (dialogContext.mounted) {
+                          Navigator.pop(dialogContext, true);
+                        }
+                      } on PostgrestException catch (error) {
+                        if (path != null) {
+                          try {
+                            await _client.storage
+                                .from('smartblock-manager-proofs')
+                                .remove([path]);
+                          } catch (_) {}
+                        }
+                        if (dialogContext.mounted) {
+                          setDialog(() => sending = false);
+                          ScaffoldMessenger.of(dialogContext).showSnackBar(
+                            SnackBar(content: Text(error.message)),
+                          );
+                        }
+                      } catch (error) {
+                        if (path != null) {
+                          try {
+                            await _client.storage
+                                .from('smartblock-manager-proofs')
+                                .remove([path]);
+                          } catch (_) {}
+                        }
+                        if (dialogContext.mounted) {
+                          setDialog(() => sending = false);
+                          ScaffoldMessenger.of(dialogContext).showSnackBar(
+                            SnackBar(content: Text(error.toString())),
+                          );
+                        }
+                      }
+                    },
+              child: sending
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(_greek ? 'Υποβολή' : 'Submit request'),
+            ),
+          ],
+        ),
+      ),
+    );
+    authority.dispose();
+    if (sent == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _greek
+                ? 'Το αίτημα στάλθηκε. Ο admin θα ελέγξει το αποδεικτικό και θα εγκρίνει έναν διαχειριστή.'
+                : 'Request sent. An admin will verify the proof and approve one manager.',
+          ),
+        ),
+      );
+    }
   }
 
   String? _required(String? value) => value == null || value.trim().isEmpty
@@ -387,10 +665,10 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
     floatingActionButton: widget.viewMode == PropertiesViewMode.resident
         ? null
         : FloatingActionButton.extended(
-      onPressed: _createProperty,
-      icon: const Icon(Icons.add_home_work_outlined),
-      label: Text(_greek ? 'Νέο ακίνητο' : 'New property'),
-    ),
+            onPressed: _createProperty,
+            icon: const Icon(Icons.add_home_work_outlined),
+            label: Text(_greek ? 'Νέο ακίνητο' : 'New property'),
+          ),
     body: RefreshIndicator(
       onRefresh: _refresh,
       child: FutureBuilder<List<Map<String, dynamic>>>(
@@ -458,11 +736,11 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
                         Text(
                           widget.viewMode == PropertiesViewMode.resident
                               ? (_greek
-                                  ? 'Δεν έχει συνδεθεί ακόμη διαμέρισμα στον λογαριασμό σου.'
-                                  : 'No apartment has been assigned to your account yet.')
+                                    ? 'Δεν έχει συνδεθεί ακόμη διαμέρισμα στον λογαριασμό σου.'
+                                    : 'No apartment has been assigned to your account yet.')
                               : (_greek
-                                  ? 'Ξεκίνα με το πρώτο σου ακίνητο'
-                                  : 'Start with your first property'),
+                                    ? 'Ξεκίνα με το πρώτο σου ακίνητο'
+                                    : 'Start with your first property'),
                           textAlign: TextAlign.center,
                           style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(fontWeight: FontWeight.w700),

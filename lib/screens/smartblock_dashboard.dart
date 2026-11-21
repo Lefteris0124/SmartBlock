@@ -59,6 +59,28 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
               );
             },
           )
+          .onPostgresChanges(
+            event: PostgresChangeEvent.insert,
+            schema: 'public',
+            table: 'property_manager_requests',
+            callback: (_) {
+              if (!mounted) return;
+              setState(() => _access = _loadAccess());
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    _greek
+                        ? 'Νέο αίτημα επαλήθευσης διαχειριστή.'
+                        : 'A new building manager claim needs review.',
+                  ),
+                  action: SnackBarAction(
+                    label: _greek ? 'Προβολή' : 'View',
+                    onPressed: () => _open(AdminReviewScreen(isGreek: _greek)),
+                  ),
+                ),
+              );
+            },
+          )
           .subscribe();
     } catch (_) {
       // The dashboard still shows pending requests if realtime is unavailable.
@@ -252,8 +274,7 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
           (registration?['requested_roles'] as List?) ?? const [],
         );
         final showOwner =
-            approvedRoles.contains('property_owner') ||
-            (status == null && access.ownerHasProperties);
+            approvedRoles.contains('property_owner') || access.ownerHasProperties;
         final showResident =
             approvedRoles.contains('tenant') ||
             (status == null && access.residentCount > 0);

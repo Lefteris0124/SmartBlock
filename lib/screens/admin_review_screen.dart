@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'property_details_screen.dart';
 
@@ -14,7 +15,7 @@ class AdminReviewScreen extends StatefulWidget {
 class _AdminReviewScreenState extends State<AdminReviewScreen>
     with SingleTickerProviderStateMixin {
   final db = Supabase.instance.client;
-  late final tabs = TabController(length: 5, vsync: this);
+  late final tabs = TabController(length: 6, vsync: this);
   bool isAdmin = false;
   String _propertyQuery = '';
   String _organizationQuery = '';
@@ -77,6 +78,70 @@ class _AdminReviewScreenState extends State<AdminReviewScreen>
       List<Map<String, dynamic>>.from(
         await db.rpc('admin_list_account_role_requests'),
       );
+
+  Future<List<Map<String, dynamic>>> loadManagerRequests() async =>
+      List<Map<String, dynamic>>.from(await db.rpc('admin_list_property_manager_requests'));
+
+  Future<void> reviewManagerRequest(String requestId, String status) async {
+    if (status == 'approved') {
+      final confirmed = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(
+        title: Text(gr ? 'Επαλήθευση διαχειριστή' : 'Verify manager'),
+        content: Text(gr
+            ? 'Επιβεβαίωσες ότι το συνημμένο έγγραφο ορίζει αυτόν τον χρήστη ως διαχειριστή; Θα είναι ο μοναδικός ενεργός διαχειριστής της πολυκατοικίας.'
+            : 'Have you verified that the attached document appoints this user as manager? They will become the building’s only active manager.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(gr ? 'Πίσω' : 'Back')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(gr ? 'Επαλήθευση' : 'Verify')),
+        ],
+      ));
+      if (confirmed != true) return;
+    }
+    try {
+      await db.rpc('admin_review_property_manager_request', params: {'p_request_id': requestId, 'p_status': status});
+      if (mounted) setState(() {});
+    } on PostgrestException catch (error) { notify(error.message); }
+  }
+
+  Future<void> openManagerProof(String path) async {
+    try {
+      final url = await db.storage.from('smartblock-manager-proofs').createSignedUrl(path, 300);
+      if (!await launchUrl(Uri.parse(url), mode: LaunchMode.platformDefault)) throw StateError('Could not open the appointment document.');
+    } catch (error) { notify('${gr ? 'Δεν ήταν δυνατή η προβολή' : 'Could not open proof'}: $error'); }
+  }
+
+  Widget managerRequests() => FutureBuilder<List<Map<String, dynamic>>>(
+    future: loadManagerRequests(),
+    builder: (context, snapshot) {
+      if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+      if (snapshot.hasError) return loadError(snapshot.error);
+      final requests = snapshot.data ?? const [];
+      if (requests.isEmpty) return Center(child: Text(gr ? 'Δεν υπάρχουν αιτήματα διαχειριστή.' : 'There are no manager requests.'));
+      return RefreshIndicator(
+        onRefresh: () async => setState(() {}),
+        child: ListView(padding: const EdgeInsets.all(12), children: requests.map((request) {
+          final pending = request['status'] == 'pending';
+          final proofPath = request['authority_document_path'] as String;
+          final requestId = request['request_id'] as String;
+          final propertyName = request['property_name'] as String? ?? '';
+          final address = request['property_address'] as String? ?? '';
+          final city = request['property_city'] as String? ?? '';
+          return Card(child: ListTile(
+            leading: CircleAvatar(child: Icon(pending ? Icons.manage_accounts_outlined : Icons.verified_user_outlined)),
+            title: Text(request['requester_email'] as String? ?? ''),
+            subtitle: Text('$propertyName · $address, $city\n${request['authority_note']}\n${pending ? (gr ? 'Σε αναμονή επαλήθευσης' : 'Awaiting verification') : statusLabel(request['status'] as String?)}'),
+            isThreeLine: true,
+            trailing: Wrap(children: [
+              IconButton(tooltip: gr ? 'Προβολή εγγράφου' : 'View proof', onPressed: () => openManagerProof(proofPath), icon: const Icon(Icons.description_outlined)),
+              if (pending && isAdmin) ...[
+                IconButton(tooltip: gr ? 'Έγκριση' : 'Approve', onPressed: () => reviewManagerRequest(requestId, 'approved'), icon: const Icon(Icons.check_circle_outline), color: Colors.green),
+                IconButton(tooltip: gr ? 'Απόρριψη' : 'Reject', onPressed: () => reviewManagerRequest(requestId, 'rejected'), icon: const Icon(Icons.cancel_outlined), color: Colors.red),
+              ],
+            ]),
+          ));
+        }).toList()),
+      );
+    },
+  );
 
   Future<void> reviewRegistration(String userId, String status) async {
     try {
@@ -569,6 +634,7 @@ class _AdminReviewScreenState extends State<AdminReviewScreen>
         Tab(icon:const Icon(Icons.apartment_outlined),text:gr?'Ακίνητα':'Properties'),
         Tab(icon:const Icon(Icons.business_outlined),text:gr?'Οργανισμοί':'Organizations'),
         Tab(icon:const Icon(Icons.group_outlined),text:gr?'Προσβάσεις':'Access'),
+        Tab(icon:const Icon(Icons.verified_user_outlined),text:gr?'Διαχειριστές':'Managers'),
       ]),
     ),
     floatingActionButton:AnimatedBuilder(animation:tabs,builder:(context,_)=>!isAdmin?const SizedBox.shrink():switch(tabs.index){
@@ -585,6 +651,7 @@ class _AdminReviewScreenState extends State<AdminReviewScreen>
       propertyDirectory(),
       organizationDirectory(),
       membershipDirectory(),
+      managerRequests(),
     ]),
   );
 }
