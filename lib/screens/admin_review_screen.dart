@@ -14,7 +14,7 @@ class AdminReviewScreen extends StatefulWidget {
 class _AdminReviewScreenState extends State<AdminReviewScreen>
     with SingleTickerProviderStateMixin {
   final db = Supabase.instance.client;
-  late final tabs = TabController(length: 4, vsync: this);
+  late final tabs = TabController(length: 5, vsync: this);
   bool isAdmin = false;
   String _propertyQuery = '';
   String _organizationQuery = '';
@@ -72,6 +72,89 @@ class _AdminReviewScreenState extends State<AdminReviewScreen>
             )
             .order('created_at', ascending: false),
       );
+
+  Future<List<Map<String, dynamic>>> loadRegistrationRequests() async =>
+      List<Map<String, dynamic>>.from(
+        await db.rpc('admin_list_account_role_requests'),
+      );
+
+  Future<void> reviewRegistration(String userId, String status) async {
+    try {
+      await db.rpc(
+        'admin_review_account_role_request',
+        params: {'p_user_id': userId, 'p_status': status},
+      );
+      if (mounted) setState(() {});
+    } on PostgrestException catch (error) {
+      notify(error.message);
+    }
+  }
+
+  Widget registrationRequests() => FutureBuilder<List<Map<String, dynamic>>>(
+    future: loadRegistrationRequests(),
+    builder: (context, snapshot) {
+      if (snapshot.connectionState == ConnectionState.waiting) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      if (snapshot.hasError) return loadError(snapshot.error);
+      final requests = snapshot.data ?? const [];
+      if (requests.isEmpty) {
+        return Center(
+          child: Text(gr
+              ? 'Δεν υπάρχουν αιτήσεις εγγραφής.'
+              : 'There are no registration requests.'),
+        );
+      }
+      return RefreshIndicator(
+        onRefresh: () async => setState(() {}),
+        child: ListView(
+          padding: const EdgeInsets.all(12),
+          children: requests.map((request) {
+            final roles = List<String>.from(
+              (request['requested_roles'] as List?) ?? const [],
+            ).map((role) => role == 'property_owner'
+                ? (gr ? 'Ιδιοκτήτης' : 'Owner')
+                : (gr ? 'Ενοικιαστής' : 'Tenant')).join(' · ');
+            final pending = request['status'] == 'pending';
+            final userId = request['user_id'] as String;
+            return Card(
+              child: ListTile(
+                leading: CircleAvatar(
+                  child: Icon(pending
+                      ? Icons.person_add_alt_1
+                      : Icons.person_outline),
+                ),
+                title: Text(request['email'] as String? ?? ''),
+                subtitle: Text(
+                  '$roles · ${statusLabel(request['status'] as String?)}',
+                ),
+                isThreeLine: true,
+                trailing: pending && isAdmin
+                    ? Wrap(
+                        spacing: 0,
+                        children: [
+                          IconButton(
+                            tooltip: gr ? 'Έγκριση' : 'Approve',
+                            onPressed: () => reviewRegistration(userId, 'approved'),
+                            icon: const Icon(Icons.check_circle_outline),
+                            color: Colors.green,
+                          ),
+                          IconButton(
+                            tooltip: gr ? 'Απόρριψη' : 'Reject',
+                            onPressed: () => reviewRegistration(userId, 'rejected'),
+                            icon: const Icon(Icons.cancel_outlined),
+                            color: Colors.red,
+                          ),
+                        ],
+                      )
+                    : null,
+              ),
+            );
+          }).toList(),
+        ),
+      );
+    },
+  );
 
   void notify(String text) {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
@@ -482,14 +565,15 @@ class _AdminReviewScreenState extends State<AdminReviewScreen>
       title:Text(gr?'Κέντρο διαχείρισης':'Admin control center'),
       bottom:TabBar(controller:tabs,isScrollable:true,tabs:[
         Tab(icon:const Icon(Icons.pending_actions_outlined),text:gr?'Εγκρίσεις':'Reviews'),
+        Tab(icon:const Icon(Icons.person_add_alt_1),text:gr?'Νέες εγγραφές':'New registrations'),
         Tab(icon:const Icon(Icons.apartment_outlined),text:gr?'Ακίνητα':'Properties'),
         Tab(icon:const Icon(Icons.business_outlined),text:gr?'Οργανισμοί':'Organizations'),
         Tab(icon:const Icon(Icons.group_outlined),text:gr?'Προσβάσεις':'Access'),
       ]),
     ),
     floatingActionButton:AnimatedBuilder(animation:tabs,builder:(context,_)=>!isAdmin?const SizedBox.shrink():switch(tabs.index){
-      2=>FloatingActionButton.extended(onPressed:()=>editOrganization(),icon:const Icon(Icons.business_outlined),label:Text(gr?'Νέος οργανισμός':'New organization')),
-      3=>FloatingActionButton.extended(onPressed:()=>editMembership(),icon:const Icon(Icons.person_add_alt_1),label:Text(gr?'Νέα πρόσβαση':'Invite user')),
+      3=>FloatingActionButton.extended(onPressed:()=>editOrganization(),icon:const Icon(Icons.business_outlined),label:Text(gr?'Νέος οργανισμός':'New organization')),
+      4=>FloatingActionButton.extended(onPressed:()=>editMembership(),icon:const Icon(Icons.person_add_alt_1),label:Text(gr?'Νέα πρόσβαση':'Invite user')),
       _=>const SizedBox.shrink(),
     }),
     body:TabBarView(controller:tabs,children:[
@@ -497,6 +581,7 @@ class _AdminReviewScreenState extends State<AdminReviewScreen>
         TabBar(isScrollable:true,tabs:[Tab(text:gr?'Οργανισμοί':'Organizations'),Tab(text:gr?'Ακίνητα':'Properties')]),
         Expanded(child:TabBarView(children:[reviewList('organizations','review_organization'),reviewList('properties','review_property')]))
       ])),
+      registrationRequests(),
       propertyDirectory(),
       organizationDirectory(),
       membershipDirectory(),

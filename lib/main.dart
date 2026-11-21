@@ -258,6 +258,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool isGreek = true;
   bool isCreatingAccount = false;
   bool isBusy = false;
+  final Set<String> requestedRoles = {};
   String get _authRedirectUrl => kIsWeb
       ? Uri.base.origin + Uri.base.path
       : 'io.supabase.smartblock://login-callback';
@@ -295,6 +296,14 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       return;
     }
+    if (isCreatingAccount && requestedRoles.isEmpty) {
+      _showMessage(
+        isGreek
+            ? 'Επίλεξε ιδιοκτήτης, ενοικιαστής ή και τα δύο.'
+            : 'Choose owner, tenant, or both.',
+      );
+      return;
+    }
 
     setState(() => isBusy = true);
     try {
@@ -303,17 +312,20 @@ class _LoginScreenState extends State<LoginScreen> {
           email: email,
           password: password,
           emailRedirectTo: _authRedirectUrl,
+          data: {'requested_roles': requestedRoles.toList()},
         );
         if (!mounted) return;
         if (response.session == null) {
           _showMessage(
             isGreek
-                ? 'Ο λογαριασμός δημιουργήθηκε. Έλεγξε το email σου για επιβεβαίωση.'
-                : 'Account created. Check your email to confirm it.',
+                ? 'Ο λογαριασμός δημιουργήθηκε. Επιβεβαίωσε το email σου· η δήλωση ρόλων θα ελεγχθεί από admin.'
+                : 'Account created. Confirm your email; an administrator will review your role selection.',
           );
         } else {
           _showMessage(
-            isGreek ? 'Ο λογαριασμός δημιουργήθηκε.' : 'Account created.',
+            isGreek
+                ? 'Η δήλωση ρόλων στάλθηκε στον admin για έγκριση.'
+                : 'Your role selection was sent for administrator approval.',
           );
         }
       } else {
@@ -340,11 +352,28 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _signInWithProvider(OAuthProvider provider) async {
+    if (isCreatingAccount && requestedRoles.isEmpty) {
+      _showMessage(
+        isGreek ? 'Επίλεξε πρώτα τον ρόλο σου.' : 'Choose your role first.',
+      );
+      return;
+    }
     setState(() => isBusy = true);
     try {
+      final redirect = Uri.parse(_authRedirectUrl);
+      final redirectTo = isCreatingAccount
+          ? redirect
+                .replace(
+                  queryParameters: {
+                    ...redirect.queryParameters,
+                    'sb_requested_roles': requestedRoles.join(','),
+                  },
+                )
+                .toString()
+          : _authRedirectUrl;
       final launched = await Supabase.instance.client.auth.signInWithOAuth(
         provider,
-        redirectTo: _authRedirectUrl,
+        redirectTo: redirectTo,
         scopes: provider == OAuthProvider.azure ? 'email' : null,
         authScreenLaunchMode: kIsWeb
             ? LaunchMode.platformDefault
@@ -518,6 +547,55 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 32),
+                  if (isCreatingAccount) ...[
+                    Text(
+                      isGreek ? 'Ο ρόλος σου' : 'Your role',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      isGreek
+                          ? 'Η επιλογή θα σταλεί στον διαχειριστή για έγκριση.'
+                          : 'Your selection will be sent to an administrator for approval.',
+                      style: const TextStyle(color: Color(0xFF637587)),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: [
+                        FilterChip(
+                          selected: requestedRoles.contains('property_owner'),
+                          avatar: const Icon(Icons.apartment_outlined),
+                          label: Text(isGreek ? 'Ιδιοκτήτης' : 'Property owner'),
+                          onSelected: isBusy
+                              ? null
+                              : (selected) => setState(() {
+                                  if (selected) {
+                                    requestedRoles.add('property_owner');
+                                  } else {
+                                    requestedRoles.remove('property_owner');
+                                  }
+                                }),
+                        ),
+                        FilterChip(
+                          selected: requestedRoles.contains('tenant'),
+                          avatar: const Icon(Icons.home_outlined),
+                          label: Text(isGreek ? 'Ενοικιαστής' : 'Tenant'),
+                          onSelected: isBusy
+                              ? null
+                              : (selected) => setState(() {
+                                  if (selected) {
+                                    requestedRoles.add('tenant');
+                                  } else {
+                                    requestedRoles.remove('tenant');
+                                  }
+                                }),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                  ],
                   Text(
                     emailLabel,
                     style: const TextStyle(fontWeight: FontWeight.w600),
@@ -652,9 +730,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: TextButton(
                       onPressed: isBusy
                           ? null
-                          : () => setState(
-                              () => isCreatingAccount = !isCreatingAccount,
-                            ),
+                          : () => setState(() {
+                              isCreatingAccount = !isCreatingAccount;
+                              if (!isCreatingAccount) requestedRoles.clear();
+                            }),
                       child: Text(
                         isCreatingAccount
                             ? (isGreek
