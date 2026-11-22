@@ -246,7 +246,7 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
     try {
       return await _client.rpc(
             'can_manage_property',
-            params: {'p_property_id': propertyId},
+            params: {'target_property_id': propertyId},
           ) ==
           true;
     } catch (_) {
