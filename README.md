@@ -66,3 +66,7 @@ Never put the Stripe secret or webhook signing secret in Flutter code, a GitHub 
 ## Admin trial mode
 
 The admin role preview uses a separate Supabase client so trial sign-in does not overwrite the administrator session. Use **Return to Admin** to end trial mode; navigation returns to the root screen. A stale role-preview route detects an active or authenticated trial and will not issue another admin-trial request. If a previous browser session was left in trial mode, sign out once and sign back in with the administrator account.
+
+## Initial rental agreements
+
+A property owner or authorized manager opens the property's **Rent** tab and chooses **New agreement**. The form records the parties, identity details, rent, deposit, common charges, dates, inventory, included services, and optional guarantee terms. SmartBlock creates a 14-day invitation URL that the owner can copy or send using their email app. The invited tenant must register or sign in with the address named in the offer, then review and accept the terms. Acceptance is recorded in-app and is not a qualified electronic signature (QES). Rent tracking is activated when the tenant accepts.
