@@ -189,14 +189,16 @@ class _TrialReturnBar extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                FilledButton.tonalIcon(
-                  onPressed: onReturn,
-                  icon: const Icon(Icons.admin_panel_settings_outlined),
-                  tooltip: isGreek ? 'Επιστροφή στον Admin' : 'Return to Admin',
-                  label: Text(
-                    compact
-                        ? (isGreek ? 'Επιστροφή' : 'Return')
-                        : (isGreek ? 'Επιστροφή στον Admin' : 'Return to Admin'),
+                Tooltip(
+                  message: isGreek ? 'Επιστροφή στον Admin' : 'Return to Admin',
+                  child: FilledButton.tonalIcon(
+                    onPressed: onReturn,
+                    icon: const Icon(Icons.admin_panel_settings_outlined),
+                    label: Text(
+                      compact
+                          ? (isGreek ? 'Επιστροφή' : 'Return')
+                          : (isGreek ? 'Επιστροφή στον Admin' : 'Return to Admin'),
+                    ),
                   ),
                 ),
               ],
