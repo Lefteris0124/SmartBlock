@@ -1008,5 +1008,3 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
     ),
   );
 }
-
-\n

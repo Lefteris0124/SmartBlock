@@ -137,5 +137,3 @@ class SmartBlockLanguageMenu extends StatelessWidget {
         ),
       );
 }
-
-\n

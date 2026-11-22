@@ -2294,4 +2294,3 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     ),
   );
 }
-\n

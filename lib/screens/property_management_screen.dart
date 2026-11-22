@@ -2956,4 +2956,3 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
     ),
   );
 }
-\n

@@ -173,4 +173,3 @@ class _RolePreviewScreenState extends State<RolePreviewScreen> {
     ),
   );
 }
-\n

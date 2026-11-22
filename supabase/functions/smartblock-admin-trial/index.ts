@@ -184,4 +184,3 @@ async function ensureOtherTrialAccount(client: ReturnType<typeof createClient>, 
   });
   return createError ? null : created.user?.id ?? null;
 }
-

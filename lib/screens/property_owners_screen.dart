@@ -698,5 +698,3 @@ class _PropertyOwnersScreenState extends State<PropertyOwnersScreen> {
   );
 }
 
-
-\n

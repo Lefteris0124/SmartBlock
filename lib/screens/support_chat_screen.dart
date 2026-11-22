@@ -664,5 +664,3 @@ class _SupportConversationScreenState extends State<SupportConversationScreen> {
     );
   }
 }
-
-\n

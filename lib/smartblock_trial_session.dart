@@ -28,4 +28,3 @@ class SmartBlockTrialSession {
     await client?.auth.signOut();
   }
 }
-\n

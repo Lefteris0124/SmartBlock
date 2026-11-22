@@ -506,5 +506,3 @@ class _LeaseRenewalsScreenState extends State<LeaseRenewalsScreen> {
     ),
   );
 }
-
-\n

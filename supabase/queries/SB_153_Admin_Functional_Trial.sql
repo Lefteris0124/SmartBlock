@@ -252,4 +252,3 @@ END;
 $function$;
 
 COMMIT;
-\n
