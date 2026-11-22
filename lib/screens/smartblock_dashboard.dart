@@ -721,7 +721,7 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
   Future<void> _leaveTrial() async {
     await SmartBlockTrialSession.stop();
     if (!mounted) return;
-    Navigator.of(context).pop();
+    Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
   @override
