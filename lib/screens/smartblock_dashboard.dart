@@ -8,6 +8,7 @@ import 'admin_review_screen.dart';
 import 'admin_billing_screen.dart';
 import 'properties_screen.dart';
 import 'support_chat_screen.dart';
+import 'role_preview_screen.dart';
 import '../app_language.dart';
 import '../smartblock_text.dart';
 
@@ -576,6 +577,15 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
               ),
             ),
             const SizedBox(height: 20),
+            if (access.isAdmin)
+              _RoleCard(
+                icon: Icons.visibility_outlined,
+                title: _greek ? 'Προβολή ως χρήστης' : 'Preview as user',
+                detail: _greek
+                    ? 'Δες πώς οργανώνονται οι λειτουργίες για ιδιοκτήτες και ενοικιαστές.'
+                    : 'Preview how the app is organized for owners and tenants.',
+                onTap: () => _open(const RolePreviewScreen()),
+              ),
             if (access.isAdmin)
               _RoleCard(
                 icon: Icons.price_change_outlined,
