@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart' hide Text;
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../smartblock_trial_session.dart';
 import 'package:url_launcher/url_launcher.dart';
