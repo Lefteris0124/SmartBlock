@@ -60,7 +60,7 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
       var query = _client
           .from('properties')
           .select(
-            'id, name, property_type, building_model, portfolio_id, other_description, total_apartments, address, city, country, management_model, approval_status, organization_id, created_by',
+            'id, name, property_type, building_model, portfolio_id, other_description, total_apartments, address, city, country, management_model, approval_status, organization_id, created_by, manager_user_id',
           );
       final userId = _client.auth.currentUser?.id;
       if (widget.organizationId != null && userId != null) {
@@ -361,7 +361,7 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
                       if (!form.currentState!.validate()) return;
                       setDialog(() => saving = true);
                       try {
-                        if (type == 'building') {
+                        if (type == 'building' || type == 'apartment') {
                           final matches = List<Map<String, dynamic>>.from(
                             await _client.rpc(
                               'find_matching_buildings',
@@ -411,7 +411,8 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
                         }
                         if (ctx.mounted) Navigator.pop(ctx, id != null);
                       } on PostgrestException catch (e) {
-                        if (type == 'building' && e.code == '23505') {
+                        if ((type == 'building' || type == 'apartment') &&
+                            e.code == '23505') {
                           try {
                             final matches = List<Map<String, dynamic>>.from(
                               await _client.rpc(
@@ -458,7 +459,19 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
     }
     if (saved == true && mounted) await _refresh();
     if (matchingBuilding != null && mounted) {
-      await _requestManagerClaim(matchingBuilding!);
+      if (matchingBuilding!['property_type'] == 'building') {
+        await _requestManagerClaim(matchingBuilding!);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _greek
+                  ? 'Υπάρχει ήδη ακίνητο καταχωρημένο σε αυτή τη διεύθυνση. Δεν δημιουργήθηκε δεύτερη εγγραφή. Ζήτησε από τον διαχειριστή ή το SmartBlock να σε συνδέσει με την υπάρχουσα.'
+                  : 'A property is already registered at this address. No duplicate was created. Ask its manager or SmartBlock to connect you to the existing record.',
+            ),
+          ),
+        );
+      }
     }
   }
 
@@ -994,3 +1007,4 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
     ),
   );
 }
+

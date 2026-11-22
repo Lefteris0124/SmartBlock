@@ -13,12 +13,14 @@ class _ReviewReadiness {
     required this.primaryOwnerStatus,
     required this.declarationsComplete,
     required this.apartmentCountsMatch,
+    required this.ownerAccountsReady,
   });
 
   final double activeShareTotal;
   final String? primaryOwnerStatus;
   final bool declarationsComplete;
   final bool apartmentCountsMatch;
+  final bool ownerAccountsReady;
 }
 
 class PropertyDetailsScreen extends StatefulWidget {
@@ -48,6 +50,7 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
   late Future<_ReviewReadiness> _reviewReadinessFuture;
   late Future<List<Map<String, dynamic>>> _ownersFuture;
   late Future<bool> _canManageProperty;
+  late Future<bool> _ownerAccountsReady;
   bool _isSubmitting = false;
   late final VoidCallback _languageListener;
 
@@ -63,6 +66,9 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
     language.selected.addListener(_languageListener);
     _reviewReadinessFuture = _loadReviewReadiness();
     _ownersFuture = _loadOwners();
+    _ownerAccountsReady = _client.rpc('property_owner_accounts_ready', params: {
+      'p_property_id': _property['id'],
+    }).then((value) => value == true).catchError((_) => false);
     _canManageProperty = _client.rpc('can_manage_property', params: {
       'p_property_id': _property['id'],
     }).then((value) => value == true).catchError((_) => false);
@@ -74,18 +80,46 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
     super.dispose();
   }
 
-  Future<List<Map<String, dynamic>>> _loadOwners() async =>
-      List<Map<String, dynamic>>.from(
-        await _client
-            .from('property_owners')
-            .select(
-              'id, ownership_percentage, apartment_count, area_sqm, title_deed_photo_path, area_declaration_confirmed_at, is_primary_representative, ownership_status, organizations(display_name, phone_e164, approval_status)',
-            )
-            .eq('property_id', _property['id'])
-            .order('created_at'),
-      );
+  Future<List<Map<String, dynamic>>> _loadOwners() async {
+    final owners = List<Map<String, dynamic>>.from(
+      await _client
+          .from('property_owners')
+          .select(
+            'id, ownership_percentage, apartment_count, area_sqm, title_deed_photo_path, area_declaration_confirmed_at, is_primary_representative, ownership_status, organizations(display_name, phone_e164, approval_status)',
+          )
+          .eq('property_id', _property['id'])
+          .order('created_at'),
+    );
+    List<Map<String, dynamic>> accountLinks = [];
+    var accountLinksKnown = true;
+    try {
+      accountLinks = List<Map<String, dynamic>>.from(await _client.rpc(
+        'list_property_owner_account_links',
+        params: {'p_property_id': _property['id']},
+      ));
+    } catch (_) {
+      // Account emails are shown only to people allowed to manage this property.
+      accountLinksKnown = false;
+    }
+    return owners.map((owner) {
+      final ownerId = owner['id'].toString();
+      return {
+        ...owner,
+        '_account_links_known': accountLinksKnown,
+        'registered_accounts': accountLinks
+            .where((link) => link['owner_id'].toString() == ownerId)
+            .toList(),
+      };
+    }).toList();
+  }
 
   Future<_ReviewReadiness> _loadReviewReadiness() async {
+    final ownerAccountsReady = await _client
+        .rpc('property_owner_accounts_ready', params: {
+          'p_property_id': _property['id'],
+        })
+        .then((value) => value == true)
+        .catchError((_) => false);
     final rows = List<Map<String, dynamic>>.from(
       await _client
           .from('property_owners')
@@ -125,6 +159,7 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
         primaryOwnerStatus: null,
         declarationsComplete: !incomplete,
         apartmentCountsMatch: apartmentCountsMatch,
+        ownerAccountsReady: ownerAccountsReady,
       );
     }
     final organization =
@@ -134,6 +169,7 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
       primaryOwnerStatus: organization['approval_status'] as String?,
       declarationsComplete: !incomplete,
       apartmentCountsMatch: apartmentCountsMatch,
+      ownerAccountsReady: ownerAccountsReady,
     );
   }
 
@@ -252,8 +288,16 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
         setState(() => _property['organization_id'] = row['organization_id']);
     } catch (_) {}
     if (mounted) {
-      setState(() => _reviewReadinessFuture = _loadReviewReadiness());
-      setState(() => _ownersFuture = _loadOwners());
+      setState(() {
+        _reviewReadinessFuture = _loadReviewReadiness();
+        _ownersFuture = _loadOwners();
+        _ownerAccountsReady = _client.rpc('property_owner_accounts_ready', params: {
+          'p_property_id': _property['id'],
+        }).then((value) => value == true).catchError((_) => false);
+        _canManageProperty = _client.rpc('can_manage_property', params: {
+          'p_property_id': _property['id'],
+        }).then((value) => value == true).catchError((_) => false);
+      });
     }
   }
 
@@ -268,6 +312,14 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
       ),
     );
   }
+
+  Widget _modulesButton() => FilledButton.tonalIcon(
+        onPressed: _openModules,
+        icon: const Icon(Icons.dashboard_customize_outlined),
+        label: Text(_isGreek
+            ? 'Ψηφοφορίες · Σημειώσεις · Οικονομικά'
+            : 'Votes · Notes · Finances'),
+      );
 
   Future<void> _openManagement() async {
     await Navigator.of(context).push(
@@ -448,6 +500,16 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
                         (owner['ownership_percentage'] as num?)?.toDouble() ??
                         0;
                     final active = owner['ownership_status'] == 'active';
+                    final accountLinksKnown =
+                        owner['_account_links_known'] == true;
+                    final linkedAccounts = List<Map<String, dynamic>>.from(
+                        (owner['registered_accounts'] as List?) ?? const []);
+                    final linkedNames = linkedAccounts.map((account) {
+                      final fullName =
+                          (account['full_name'] as String?)?.trim() ?? '';
+                      final email = account['email'] as String? ?? '';
+                      return fullName.isEmpty ? email : '$fullName · $email';
+                    }).join(', ');
                     return ListTile(
                       leading: CircleAvatar(
                         child: Icon(
@@ -474,6 +536,12 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
                           if (!active)
                             (owner['ownership_status'] as String? ?? '')
                                 .replaceAll('_', ' '),
+                          if (active && accountLinksKnown && linkedAccounts.isNotEmpty)
+                            '${_isGreek ? 'Λογαριασμός' : 'Account'}: $linkedNames',
+                          if (active && accountLinksKnown && linkedAccounts.isEmpty)
+                            (_isGreek
+                                ? 'Δεν έχει συνδεθεί εγγραφή ιδιοκτήτη'
+                                : 'Owner registration not linked'),
                         ].where((v) => v.isNotEmpty).join(' · '),
                       ),
                     );
@@ -491,14 +559,34 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
             ),
           ),
           const SizedBox(height: 10),
-          FilledButton.tonalIcon(
-            onPressed: _openModules,
-            icon: const Icon(Icons.dashboard_customize_outlined),
-            label: Text(
-              _isGreek
-                  ? 'Ψηφοφορίες · Σημειώσεις · Οικονομικά'
-                  : 'Votes · Notes · Finances',
-            ),
+          FutureBuilder<bool>(
+            future: _ownerAccountsReady,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.data == true) {
+                return _modulesButton();
+              }
+              return FutureBuilder<bool>(
+                future: _canManageProperty,
+                builder: (context, managerSnapshot) {
+                  if (managerSnapshot.data == true) return _modulesButton();
+                  return Card(
+                    color: Theme.of(context).colorScheme.tertiaryContainer,
+                    child: ListTile(
+                      leading: const Icon(Icons.link_off_outlined),
+                      title: Text(_isGreek
+                          ? 'Εκκρεμεί η σύνδεση όλων των ιδιοκτητών'
+                          : 'Link every owner account to continue'),
+                      subtitle: Text(_isGreek
+                          ? 'Οι ψηφοφορίες, τα οικονομικά και η διαχείριση ενεργοποιούνται όταν κάθε ενεργός ιδιοκτήτης συνδεθεί με εγκεκριμένη εγγραφή. Επικοινώνησε με τον δημιουργό ή τον διαχειριστή του ακινήτου.'
+                          : 'Votes, finances and management unlock after every active owner is linked to an approved account. Ask the property creator or manager to link them.'),
+                    ),
+                  );
+                },
+              );
+            },
           ),
           const SizedBox(height: 10),
           FutureBuilder<bool>(
@@ -582,6 +670,13 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
                         : 'The owners’ apartment counts must match the building total.',
                   );
                 }
+                if (!readiness.ownerAccountsReady) {
+                  reasons.add(
+                    _isGreek
+                        ? 'Σύνδεσε κάθε ενεργό ιδιοκτήτη με εγκεκριμένη εγγραφή ιδιοκτήτη πριν συνεχίσεις.'
+                        : 'Link every active owner to an approved owner account before continuing.',
+                  );
+                }
                 if (reasons.isNotEmpty) {
                   return _readinessCard(reasons.join('\n'));
                 }
@@ -623,3 +718,4 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
     ),
   );
 }
+

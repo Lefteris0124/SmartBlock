@@ -29,6 +29,7 @@ class _PropertyOwnersScreenState extends State<PropertyOwnersScreen> {
   late bool _greek;
   bool _isAdmin = false;
   bool _isPropertyCreator = false;
+  bool _isPropertyManager = false;
   int? _totalApartments;
   Set<String> _manageableOrganizations = {};
   late final VoidCallback _languageListener;
@@ -58,7 +59,7 @@ class _PropertyOwnersScreenState extends State<PropertyOwnersScreen> {
       final manageableOrganizations = await _db.rpc('my_manageable_organization_ids');
       final property = await _db
           .from('properties')
-          .select('created_by, total_apartments')
+          .select('created_by, total_apartments, manager_user_id')
           .eq('id', widget.propertyId)
           .maybeSingle();
       if (mounted) {
@@ -68,22 +69,228 @@ class _PropertyOwnersScreenState extends State<PropertyOwnersScreen> {
               .map((v) => v.toString())
               .toSet();
           _isPropertyCreator = property?['created_by'] == _db.auth.currentUser?.id;
+          _isPropertyManager = property?['manager_user_id'] == _db.auth.currentUser?.id;
           _totalApartments = (property?['total_apartments'] as num?)?.toInt();
         });
       }
     } catch (_) {}
   }
 
-  Future<List<Map<String, dynamic>>> _load() async =>
-      List<Map<String, dynamic>>.from(
-        await _db
-            .from('property_owners')
-            .select(
-              'id, organization_id, ownership_percentage, apartment_count, area_sqm, title_deed_photo_path, area_declaration_confirmed_at, is_primary_representative, ownership_status, organizations(display_name, phone_e164, approval_status)',
-            )
-            .eq('property_id', widget.propertyId)
-            .order('created_at'),
-      );
+  Future<List<Map<String, dynamic>>> _load() async {
+    final owners = List<Map<String, dynamic>>.from(
+      await _db
+          .from('property_owners')
+          .select(
+            'id, organization_id, ownership_percentage, apartment_count, area_sqm, title_deed_photo_path, area_declaration_confirmed_at, is_primary_representative, ownership_status, organizations(display_name, phone_e164, approval_status)',
+          )
+          .eq('property_id', widget.propertyId)
+          .order('created_at'),
+    );
+    List<Map<String, dynamic>> accountLinks = [];
+    var accountLinksKnown = true;
+    try {
+      accountLinks = List<Map<String, dynamic>>.from(await _db.rpc(
+        'list_property_owner_account_links',
+        params: {'p_property_id': widget.propertyId},
+      ));
+    } catch (_) {
+      // Non-managers can still see the owner roster without private account details.
+      accountLinksKnown = false;
+    }
+    return owners.map((owner) {
+      final ownerId = owner['id'].toString();
+      return {
+        ...owner,
+        '_account_links_known': accountLinksKnown,
+        'registered_accounts': accountLinks
+            .where((link) => link['owner_id'].toString() == ownerId)
+            .toList(),
+      };
+    }).toList();
+  }
+
+  Future<void> _linkRegisteredAccount(Map<String, dynamic> owner) async {
+    final searchController = TextEditingController();
+    var accounts = <Map<String, dynamic>>[];
+    var searching = false;
+    var hasSearched = false;
+    String? searchError;
+    String? selectedUserId;
+    final selected = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialog) {
+          Future<void> searchAccounts() async {
+            final query = searchController.text.trim();
+            if (query.length < 3) {
+              setDialog(() {
+                searchError = _greek
+                    ? 'Γράψε τουλάχιστον 3 χαρακτήρες.'
+                    : 'Enter at least 3 characters.';
+                accounts = [];
+                hasSearched = false;
+              });
+              return;
+            }
+            setDialog(() {
+              searching = true;
+              searchError = null;
+              selectedUserId = null;
+            });
+            try {
+              final result = await _db.rpc(
+                'list_registered_property_owner_accounts',
+                params: {
+                  'p_property_id': widget.propertyId,
+                  'p_search': query,
+                },
+              );
+              setDialog(() {
+                accounts = List<Map<String, dynamic>>.from(result);
+                hasSearched = true;
+              });
+            } on PostgrestException catch (error) {
+              setDialog(() {
+                searchError = error.message;
+                accounts = [];
+                hasSearched = true;
+              });
+            } finally {
+              setDialog(() => searching = false);
+            }
+          }
+
+          return AlertDialog(
+            title: Text(_greek
+                ? 'Σύνδεση με εγγεγραμμένο ιδιοκτήτη'
+                : 'Link a registered owner'),
+            content: SizedBox(
+              width: 460,
+              height: 430,
+              child: Column(
+                children: [
+                  Text(_greek
+                      ? 'Αναζήτησε με το όνομα, το email ή το τηλέφωνο που χρησιμοποίησε στην εγγραφή. Εμφανίζονται εγκεκριμένοι λογαριασμοί ιδιοκτητών.'
+                      : 'Search by the name, email or phone used during sign-up. Only approved owner accounts are shown.'),
+                  const SizedBox(height: 12),
+                  Row(children: [
+                    Expanded(
+                      child: TextField(
+                        controller: searchController,
+                        autofocus: true,
+                        onSubmitted: (_) => searchAccounts(),
+                        decoration: InputDecoration(
+                          labelText: _greek
+                              ? 'Όνομα, email ή τηλέφωνο'
+                              : 'Name, email or phone',
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: _greek ? 'Αναζήτηση' : 'Search',
+                      onPressed: searching ? null : searchAccounts,
+                      icon: const Icon(Icons.search),
+                    ),
+                  ]),
+                  if (searchError != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(searchError!,
+                          style: TextStyle(
+                              color: Theme.of(context).colorScheme.error)),
+                    ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: searching
+                        ? const Center(child: CircularProgressIndicator())
+                        : !hasSearched
+                            ? Center(
+                                child: Text(_greek
+                                    ? 'Ο ιδιοκτήτης πρέπει να έχει εγγραφεί ως ιδιοκτήτης και να έχει εγκριθεί από το SmartBlock.'
+                                    : 'The owner must sign up as an owner and be approved by SmartBlock.'),
+                              )
+                            : accounts.isEmpty
+                                ? Center(
+                                    child: Text(_greek
+                                        ? 'Δεν βρέθηκαν εγκεκριμένοι ιδιοκτήτες.'
+                                        : 'No approved owner accounts matched.'),
+                                  )
+                                : ListView.builder(
+                                    itemCount: accounts.length,
+                                    itemBuilder: (context, index) {
+                                      final account = accounts[index];
+                                      final userId =
+                                          account['user_id'].toString();
+                                      final fullName =
+                                          (account['full_name'] as String?)
+                                                  ?.trim() ??
+                                              '';
+                                      final email =
+                                          account['email'] as String? ?? '';
+                                      final phone =
+                                          account['phone'] as String? ?? '';
+                                      return ListTile(
+                                        selected: selectedUserId == userId,
+                                        leading: Icon(selectedUserId == userId
+                                            ? Icons.radio_button_checked
+                                            : Icons.radio_button_off),
+                                        title: Text(
+                                            fullName.isEmpty ? email : fullName),
+                                        subtitle: Text([
+                                          email,
+                                          if (phone.isNotEmpty) phone,
+                                        ].join(' · ')),
+                                        onTap: () => setDialog(
+                                            () => selectedUserId = userId),
+                                      );
+                                    },
+                                  ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: Text(_greek ? 'Άκυρο' : 'Cancel'),
+              ),
+              FilledButton(
+                onPressed: selectedUserId == null
+                    ? null
+                    : () => Navigator.pop(
+                          dialogContext,
+                          accounts.firstWhere((account) =>
+                              account['user_id'].toString() == selectedUserId),
+                        ),
+                child: Text(_greek ? 'Σύνδεση' : 'Link account'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    searchController.dispose();
+    if (selected == null) return;
+    try {
+      await _db.rpc('link_property_owner_account', params: {
+        'p_owner_id': owner['id'],
+        'p_user_id': selected['user_id'],
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(_greek
+              ? 'Ο ιδιοκτήτης συνδέθηκε με τον λογαριασμό.'
+              : 'Owner linked to the account.'),
+        ));
+        await _refresh();
+      }
+    } on PostgrestException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    }
+  }
 
   Future<void> _refresh() async {
     final f = _load();
@@ -400,13 +607,49 @@ class _PropertyOwnersScreenState extends State<PropertyOwnersScreen> {
           final area = (owner['area_sqm'] as num?)?.toDouble();
           final share = (owner['ownership_percentage'] as num?)?.toDouble() ?? 0;
           final orgId = owner['organization_id']?.toString();
-          final canManage = _isAdmin || _isPropertyCreator || _manageableOrganizations.contains(orgId);
+          final canManage = _isAdmin || _isPropertyCreator || _isPropertyManager || _manageableOrganizations.contains(orgId);
           final deed = owner['title_deed_photo_path'] as String?;
           final declarationDone = area != null && deed != null && owner['area_declaration_confirmed_at'] != null;
+          final accountLinksKnown = owner['_account_links_known'] == true;
+          final registeredAccounts = List<Map<String, dynamic>>.from(
+              (owner['registered_accounts'] as List?) ?? const []);
+          final linkedAccountLabel = registeredAccounts.map((account) {
+            final fullName = (account['full_name'] as String?)?.trim() ?? '';
+            final email = account['email'] as String? ?? '';
+            return fullName.isEmpty ? email : '$fullName · $email';
+          }).join(', ');
           return Card(child: Padding(padding: const EdgeInsets.all(8), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             ListTile(contentPadding: const EdgeInsets.symmetric(horizontal: 8), leading: Icon(owner['is_primary_representative'] == true ? Icons.verified_user_outlined : Icons.person_outline), title: Text(org['display_name'] as String? ?? ''), subtitle: Text('${org['phone_e164'] ?? ''} · ${switch (owner['ownership_status']) { 'active' => _greek ? 'Ενεργός' : 'Active', 'transferred' => _greek ? 'Μεταβιβάστηκε' : 'Transferred', _ => _greek ? 'Ανενεργός' : 'Inactive' }}'), trailing: _isAdmin ? PopupMenuButton<String>(onSelected: (action) { if (action == 'edit') _manageOwner(owner); }, itemBuilder: (ctx) => [PopupMenuItem(value: 'edit', child: Text(_greek ? 'Επεξεργασία' : 'Edit'))]) : (org['approval_status'] == 'approved' ? const Icon(Icons.verified_outlined) : const Icon(Icons.hourglass_top))),
+            if (accountLinksKnown || canManage)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(children: [
+                  Icon(!accountLinksKnown
+                      ? Icons.lock_outline
+                      : registeredAccounts.isEmpty
+                          ? Icons.person_add_alt_1_outlined
+                          : Icons.verified_user_outlined,
+                      size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(!accountLinksKnown
+                      ? (_greek
+                          ? 'Η κατάσταση σύνδεσης λογαριασμού είναι ιδιωτική'
+                          : 'Account link status is private')
+                      : registeredAccounts.isEmpty
+                          ? (_greek
+                              ? 'Δεν έχει συνδεθεί εγγεγραμμένος λογαριασμός'
+                              : 'No registered account linked')
+                          : '${_greek ? 'Λογαριασμός' : 'Account'}: $linkedAccountLabel')),
+                ]),
+              ),
             Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text('${owner['apartment_count'] ?? '—'} ${_greek ? 'διαμερίσματα' : 'apartments'} · ${area == null ? '—' : area.toStringAsFixed(2)} m² · ${!sharesReady ? (_greek ? 'ποσοστό σε εκκρεμότητα' : 'share pending') : '${share.toStringAsFixed(2)}%'}')),
             Wrap(spacing: 8, children: [
+              if (canManage && registeredAccounts.isEmpty)
+                TextButton.icon(
+                  onPressed: () => _linkRegisteredAccount(owner),
+                  icon: const Icon(Icons.link),
+                  label: Text(_greek ? 'Σύνδεση εγγραφής' : 'Link registration'),
+                ),
               if (canManage) TextButton.icon(onPressed: () => _declareArea(owner), icon: const Icon(Icons.edit_note), label: Text(declarationDone ? (_greek ? 'Ενημέρωση στοιχείων' : 'Update declaration') : (_greek ? 'Δήλωση τετραγωνικών' : 'Declare area'))),
               if (canManage && deed != null) TextButton.icon(onPressed: () => _viewDeed(deed), icon: const Icon(Icons.description_outlined), label: Text(_greek ? 'Προβολή τίτλου' : 'View deed')),
             ]),
