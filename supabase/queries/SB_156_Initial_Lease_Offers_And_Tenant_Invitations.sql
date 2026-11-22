@@ -169,8 +169,8 @@ BEGIN
     nullif(btrim(coalesce(p_tenant_phone_e164,'')),''),p_monthly_rent,p_deposit_amount,p_common_charges,
     p_start_date,p_end_date,p_rent_due_day,coalesce(p_furniture_and_inventory,''),coalesce(p_included_services,''),
     coalesce(p_special_terms,''),coalesce(p_guarantor_name,''),coalesce(p_guarantor_terms,''),
-    payment_clause,extensions.encode(extensions.digest(terms,'sha256'),'hex'),
-    extensions.encode(extensions.digest(raw_token,'sha256'),'hex'),now()+interval '14 days',btrim(p_owner_name)
+    payment_clause,pg_catalog.encode(extensions.digest(terms,'sha256'),'hex'),
+    pg_catalog.encode(extensions.digest(raw_token,'sha256'),'hex'),now()+interval '14 days',btrim(p_owner_name)
   ) RETURNING id INTO offer_id;
 
   INSERT INTO public.lease_contract_offer_events(offer_id,actor_user_id,event_type,signer_name,terms_sha256)
@@ -196,7 +196,7 @@ BEGIN
   END IF;
   SELECT lower(u.email::text) INTO actor_email FROM auth.users u WHERE u.id=actor;
   SELECT * INTO offer FROM public.lease_contract_offers o
-    WHERE o.invite_token_sha256=extensions.encode(extensions.digest(p_token,'sha256'),'hex')
+    WHERE o.invite_token_sha256=pg_catalog.encode(extensions.digest(p_token,'sha256'),'hex')
       AND lower(o.tenant_email)=actor_email
       AND o.status IN ('awaiting_tenant','accepted')
       AND (o.status='accepted' OR o.invite_expires_at>now());
@@ -249,7 +249,7 @@ BEGIN
   END IF;
   SELECT lower(u.email::text) INTO actor_email FROM auth.users u WHERE u.id=actor;
   SELECT * INTO offer FROM public.lease_contract_offers o
-  WHERE o.invite_token_sha256=extensions.encode(extensions.digest(p_token,'sha256'),'hex')
+  WHERE o.invite_token_sha256=pg_catalog.encode(extensions.digest(p_token,'sha256'),'hex')
     AND lower(o.tenant_email)=actor_email
     AND o.status='awaiting_tenant'
     AND o.invite_expires_at>now()
