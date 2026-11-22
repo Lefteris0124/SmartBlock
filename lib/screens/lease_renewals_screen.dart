@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../smartblock_trial_session.dart';
+import 'property_modules_screen.dart';
 
 class LeaseRenewalsScreen extends StatefulWidget {
   const LeaseRenewalsScreen({
@@ -64,6 +65,66 @@ class _LeaseRenewalsScreenState extends State<LeaseRenewalsScreen> {
           ? 'Δεν έχει συνδεθεί ακόμη πάροχος QES'
           : 'QES provider not connected yet',
   };
+
+  Future<void> _createLease() async {
+    try {
+      final properties = List<Map<String, dynamic>>.from(
+        await _db.from('properties').select('id,name').order('name'),
+      );
+      final manageable = <Map<String, dynamic>>[];
+      for (final property in properties) {
+        final canManage = await _db.rpc(
+          'can_manage_property',
+          params: {'target_property_id': property['id']},
+        );
+        if (canManage == true) manageable.add(property);
+      }
+      if (!mounted) return;
+      if (manageable.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_gr
+              ? 'Δεν βρέθηκε ακίνητο στο οποίο έχεις δικαίωμα διαχείρισης.'
+              : 'No property was found that you can manage.')),
+        );
+        return;
+      }
+      final property = await showDialog<Map<String, dynamic>>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(_gr ? 'Επίλεξε ακίνητο' : 'Choose a property'),
+          content: SizedBox(
+            width: 480,
+            child: ListView(
+              shrinkWrap: true,
+              children: manageable.map((item) => ListTile(
+                leading: const Icon(Icons.apartment_outlined),
+                title: Text(item['name']?.toString() ?? ''),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.pop(ctx, item),
+              )).toList(),
+            ),
+          ),
+        ),
+      );
+      if (property == null || !mounted) return;
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => PropertyModulesScreen(
+            propertyId: property['id'].toString(),
+            propertyName: property['name']?.toString() ?? '',
+            isGreek: _gr,
+            initialTab: 3,
+          ),
+        ),
+      );
+    } on PostgrestException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error.message)),
+        );
+      }
+    }
+  }
 
   Future<void> _review(Map<String, dynamic> row) async {
     final currentId = _db.auth.currentUser?.id;
@@ -444,6 +505,11 @@ class _LeaseRenewalsScreenState extends State<LeaseRenewalsScreen> {
     appBar: AppBar(
       title: Text(_gr ? 'Ανανεώσεις μισθώσεων' : 'Lease renewals'),
       actions: [
+        IconButton(
+          tooltip: _gr ? 'Δημιουργία μίσθωσης' : 'Create rental agreement',
+          onPressed: _createLease,
+          icon: const Icon(Icons.add_link),
+        ),
         IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh)),
       ],
     ),
