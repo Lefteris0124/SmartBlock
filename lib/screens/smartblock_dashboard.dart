@@ -10,6 +10,9 @@ import 'properties_screen.dart';
 import 'lease_renewals_screen.dart';
 import 'support_chat_screen.dart';
 import 'role_preview_screen.dart';
+import 'property_modules_screen.dart';
+import 'property_management_screen.dart';
+import 'resident_service_requests_screen.dart';
 import '../app_language.dart';
 import '../smartblock_text.dart';
 
@@ -68,7 +71,8 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
   Future<void> _refreshDueNotifications() async {
     try {
       await _client.rpc('refresh_property_due_notifications');
-      if (mounted) setState(() => _userNotifications = _loadUserNotifications());
+      if (mounted)
+        setState(() => _userNotifications = _loadUserNotifications());
     } catch (_) {}
   }
 
@@ -76,12 +80,16 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
     try {
       final userId = _client.auth.currentUser?.id;
       if (userId == null) return [];
-      return List<Map<String, dynamic>>.from(await _client
-          .from('user_notifications')
-          .select('id,property_id,notification_type,title_el,title_en,message_el,message_en,is_read,created_at,related_type,related_id')
-          .eq('user_id', userId)
-          .order('created_at', ascending: false)
-          .limit(40));
+      return List<Map<String, dynamic>>.from(
+        await _client
+            .from('user_notifications')
+            .select(
+              'id,property_id,notification_type,title_el,title_en,message_el,message_en,is_read,created_at,related_type,related_id',
+            )
+            .eq('user_id', userId)
+            .order('created_at', ascending: false)
+            .limit(40),
+      );
     } catch (_) {
       return [];
     }
@@ -96,22 +104,242 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
           event: PostgresChangeEvent.insert,
           schema: 'public',
           table: 'user_notifications',
-          filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'user_id', value: userId),
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: userId,
+          ),
           callback: (_) {
             if (!mounted) return;
             setState(() => _userNotifications = _loadUserNotifications());
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text(_greek ? 'Έχεις νέα ειδοποίηση SmartBlock.' : 'You have a new SmartBlock notification.'),
-              action: SnackBarAction(label: _greek ? 'Προβολή' : 'View', onPressed: _openNotificationInbox),
-            ));
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  _greek
+                      ? 'Έχεις νέα ειδοποίηση SmartBlock.'
+                      : 'You have a new SmartBlock notification.',
+                ),
+                action: SnackBarAction(
+                  label: _greek ? 'Προβολή' : 'View',
+                  onPressed: _openNotificationInbox,
+                ),
+              ),
+            );
           },
         )
         .subscribe();
   }
 
   Future<void> _markNotificationRead(String id) async {
-    await _client.from('user_notifications').update({'is_read': true}).eq('id', id);
+    await _client
+        .from('user_notifications')
+        .update({'is_read': true})
+        .eq('id', id);
     if (mounted) setState(() => _userNotifications = _loadUserNotifications());
+  }
+
+  Future<void> _openNotification(Map<String, dynamic> item) async {
+    final id = item['id'] as String?;
+    if (id != null && item['is_read'] != true) {
+      try {
+        await _markNotificationRead(id);
+      } catch (_) {}
+    }
+    if (!mounted) return;
+
+    final type = item['notification_type'] as String? ?? '';
+    final relatedType = item['related_type'] as String? ?? '';
+    final relatedId = item['related_id'] as String?;
+    final propertyId = item['property_id'] as String?;
+    final isStaff = await _isStaff();
+
+    if (type == 'registration' || relatedType == 'account_role_requests') {
+      await _open(AdminReviewScreen(isGreek: _greek, initialTab: 1));
+      return;
+    }
+    if (type == 'new_property') {
+      await _open(AdminReviewScreen(isGreek: _greek, initialTab: 2));
+      return;
+    }
+    if (relatedType == 'support_messages' && relatedId != null) {
+      await _openSupportNotification(relatedId, isStaff: isStaff);
+      return;
+    }
+    if (type.startsWith('lease_') || relatedType.contains('lease_renewal')) {
+      await _open(LeaseRenewalsScreen(isGreek: _greek, isStaff: isStaff));
+      return;
+    }
+    if (propertyId == null) {
+      await _open(SupportChatScreen(isGreek: _greek));
+      return;
+    }
+
+    if (relatedType == 'property_service_requests' || type == 'damage') {
+      if (isStaff || await _canManageProperty(propertyId)) {
+        await _open(
+          await _managementScreen(propertyId, focus: 'service_request'),
+        );
+      } else {
+        final request = relatedId == null
+            ? null
+            : await _client
+                  .from('property_service_requests')
+                  .select('apartment_number')
+                  .eq('id', relatedId)
+                  .maybeSingle();
+        final residentRows = List<Map<String, dynamic>>.from(
+          await _client.rpc('list_my_resident_properties'),
+        );
+        final residentMatches = residentRows.where(
+          (row) => row['property_id'] == propertyId,
+        );
+        final resident = residentMatches.isEmpty ? null : residentMatches.first;
+        await _open(
+          ResidentServiceRequestsScreen(
+            propertyId: propertyId,
+            propertyName: await _propertyName(propertyId),
+            apartmentNumber:
+                (request?['apartment_number'] as String?) ??
+                (resident?['apartment_number'] as String? ?? ''),
+            isGreek: _greek,
+          ),
+        );
+      }
+      return;
+    }
+    if (relatedType == 'property_meetings' || type == 'meeting') {
+      await _open(await _managementScreen(propertyId, focus: 'meeting'));
+      return;
+    }
+
+    final moduleTab = switch (relatedType) {
+      'property_votes' => 0,
+      'property_notes' => 1,
+      'property_charge_entries' || 'property_charge_runs' => 2,
+      'property_rent_installments' || 'property_rent_contracts' => 3,
+      _ => switch (type) {
+        'vote' => 0,
+        'announcement' => 1,
+        'charges_due' ||
+        'charges_overdue' ||
+        'building_charges_due' ||
+        'building_charges_overdue' => 2,
+        'rent_due' || 'rent_overdue' => 3,
+        _ => -1,
+      },
+    };
+    if (moduleTab >= 0) {
+      await _open(
+        PropertyModulesScreen(
+          propertyId: propertyId,
+          propertyName: await _propertyName(propertyId),
+          isGreek: _greek,
+          initialTab: moduleTab,
+        ),
+      );
+    } else {
+      await _open(await _managementScreen(propertyId));
+    }
+  }
+
+  Future<bool> _canManageProperty(String propertyId) async {
+    try {
+      return await _client.rpc(
+            'can_manage_property',
+            params: {'p_property_id': propertyId},
+          ) ==
+          true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> _isStaff() async {
+    try {
+      return await _client.rpc('is_smartblock_staff') == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<String> _propertyName(String propertyId) async {
+    try {
+      final row = await _client
+          .from('properties')
+          .select('name')
+          .eq('id', propertyId)
+          .maybeSingle();
+      return row?['name'] as String? ?? (_greek ? 'Ακίνητο' : 'Property');
+    } catch (_) {
+      return _greek ? 'Ακίνητο' : 'Property';
+    }
+  }
+
+  Future<PropertyManagementScreen> _managementScreen(
+    String propertyId, {
+    String? focus,
+  }) async {
+    String name = _greek ? 'Διαχείριση ακινήτου' : 'Property management';
+    int? totalApartments;
+    try {
+      final property = await _client
+          .from('properties')
+          .select('name,total_apartments')
+          .eq('id', propertyId)
+          .maybeSingle();
+      name = property?['name'] as String? ?? name;
+      totalApartments = (property?['total_apartments'] as num?)?.toInt();
+    } catch (_) {}
+    return PropertyManagementScreen(
+      propertyId: propertyId,
+      propertyName: name,
+      totalApartments: totalApartments,
+      isGreek: _greek,
+      initialSection: focus,
+    );
+  }
+
+  Future<void> _openSupportNotification(
+    String messageId, {
+    required bool isStaff,
+  }) async {
+    try {
+      final message = await _client
+          .from('support_messages')
+          .select('conversation_id')
+          .eq('id', messageId)
+          .maybeSingle();
+      final conversationId = message?['conversation_id'] as String?;
+      if (conversationId == null) {
+        await _open(SupportChatScreen(isGreek: _greek));
+        return;
+      }
+      final conversations = List<Map<String, dynamic>>.from(
+        await _client.rpc('list_support_conversations'),
+      );
+      final matches = conversations.where(
+        (row) => row['conversation_id'] == conversationId,
+      );
+      if (matches.isEmpty) {
+        await _open(SupportChatScreen(isGreek: _greek));
+        return;
+      }
+      final conversation = matches.first;
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => SupportConversationScreen(
+            conversationId: conversationId,
+            subject: conversation['subject'] as String? ?? '',
+            status: conversation['status'] as String? ?? 'open',
+            userEmail: conversation['user_email'] as String? ?? '',
+            isStaff: isStaff,
+            isGreek: _greek,
+          ),
+        ),
+      );
+    } catch (_) {
+      if (mounted) await _open(SupportChatScreen(isGreek: _greek));
+    }
   }
 
   Future<void> _openNotificationInbox() async {
@@ -124,36 +352,74 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
       builder: (sheetContext) => SafeArea(
         child: SizedBox(
           height: MediaQuery.sizeOf(sheetContext).height * .75,
-          child: Column(children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-              child: Row(children: [
-                const Icon(Icons.notifications_active_outlined),
-                const SizedBox(width: 10),
-                Text(_greek ? 'Ειδοποιήσεις' : 'Notifications', style: Theme.of(sheetContext).textTheme.titleLarge),
-              ]),
-            ),
-            Expanded(child: notifications.isEmpty
-                ? Center(child: Text(_greek ? 'Δεν υπάρχουν ειδοποιήσεις.' : 'No notifications yet.'))
-                : ListView.builder(
-                    itemCount: notifications.length,
-                    itemBuilder: (context, index) {
-                      final item = notifications[index];
-                      final greek = _greek;
-                      final createdAt = item['created_at'] as String? ?? '';
-                      final timestamp = createdAt.length > 16
-                          ? createdAt.substring(0, 16).replaceFirst('T', ' ')
-                          : createdAt.replaceFirst('T', ' ');
-                      return ListTile(
-                        leading: Icon(item['is_read'] == true ? Icons.notifications_none : Icons.notifications_active, color: item['is_read'] == true ? null : Theme.of(context).colorScheme.primary),
-                        title: Text((greek ? item['title_el'] : item['title_en']) as String? ?? ''),
-                        subtitle: Text((greek ? item['message_el'] : item['message_en']) as String? ?? ''),
-                        trailing: Text(timestamp),
-                        onTap: item['is_read'] == true ? null : () => _markNotificationRead(item['id'] as String),
-                      );
-                    },
-                  )),
-          ]),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 8,
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.notifications_active_outlined),
+                    const SizedBox(width: 10),
+                    Text(
+                      _greek ? 'Ειδοποιήσεις' : 'Notifications',
+                      style: Theme.of(sheetContext).textTheme.titleLarge,
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: notifications.isEmpty
+                    ? Center(
+                        child: Text(
+                          _greek
+                              ? 'Δεν υπάρχουν ειδοποιήσεις.'
+                              : 'No notifications yet.',
+                        ),
+                      )
+                    : ListView.builder(
+                        itemCount: notifications.length,
+                        itemBuilder: (context, index) {
+                          final item = notifications[index];
+                          final greek = _greek;
+                          final createdAt = item['created_at'] as String? ?? '';
+                          final timestamp = createdAt.length > 16
+                              ? createdAt
+                                    .substring(0, 16)
+                                    .replaceFirst('T', ' ')
+                              : createdAt.replaceFirst('T', ' ');
+                          return ListTile(
+                            leading: Icon(
+                              item['is_read'] == true
+                                  ? Icons.notifications_none
+                                  : Icons.notifications_active,
+                              color: item['is_read'] == true
+                                  ? null
+                                  : Theme.of(context).colorScheme.primary,
+                            ),
+                            title: Text(
+                              (greek ? item['title_el'] : item['title_en'])
+                                      as String? ??
+                                  '',
+                            ),
+                            subtitle: Text(
+                              (greek ? item['message_el'] : item['message_en'])
+                                      as String? ??
+                                  '',
+                            ),
+                            trailing: Text(timestamp),
+                            onTap: () {
+                              Navigator.of(context).pop();
+                              _openNotification(item);
+                            },
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -217,13 +483,21 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
     try {
       final auth = LocalAuthentication();
       if ((await auth.getAvailableBiometrics()).isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
-          _greek ? 'Δεν βρέθηκε ενεργό Face ID ή δακτυλικό αποτύπωμα στη συσκευή.' : 'No enrolled Face ID or fingerprint was found on this device.',
-        )));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _greek
+                  ? 'Δεν βρέθηκε ενεργό Face ID ή δακτυλικό αποτύπωμα στη συσκευή.'
+                  : 'No enrolled Face ID or fingerprint was found on this device.',
+            ),
+          ),
+        );
         return;
       }
       final success = await auth.authenticate(
-        localizedReason: _greek ? 'Επιβεβαίωσε για να ενεργοποιήσεις το βιομετρικό ξεκλείδωμα SmartBlock.' : 'Authenticate to enable SmartBlock biometric unlock.',
+        localizedReason: _greek
+            ? 'Επιβεβαίωσε για να ενεργοποιήσεις το βιομετρικό ξεκλείδωμα SmartBlock.'
+            : 'Authenticate to enable SmartBlock biometric unlock.',
         biometricOnly: true,
         persistAcrossBackgrounding: true,
       );
@@ -231,14 +505,26 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
       final preferences = await SharedPreferences.getInstance();
       await preferences.setBool('smartblock_biometric_$userId', true);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
-        _greek ? 'Το βιομετρικό ξεκλείδωμα ενεργοποιήθηκε σε αυτή τη συσκευή.' : 'Biometric unlock is enabled on this device.',
-      )));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _greek
+                ? 'Το βιομετρικό ξεκλείδωμα ενεργοποιήθηκε σε αυτή τη συσκευή.'
+                : 'Biometric unlock is enabled on this device.',
+          ),
+        ),
+      );
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
-        _greek ? 'Δεν ήταν δυνατή η ενεργοποίηση. Έλεγξε τις ρυθμίσεις βιομετρικών της συσκευής.' : 'Could not enable biometrics. Check this device’s biometric settings.',
-      )));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _greek
+                ? 'Δεν ήταν δυνατή η ενεργοποίηση. Έλεγξε τις ρυθμίσεις βιομετρικών της συσκευής.'
+                : 'Could not enable biometrics. Check this device’s biometric settings.',
+          ),
+        ),
+      );
     }
   }
 
@@ -440,17 +726,25 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
         FutureBuilder<List<Map<String, dynamic>>>(
           future: _userNotifications,
           builder: (context, snapshot) {
-            final unread = (snapshot.data ?? const []).where((item) => item['is_read'] != true).length;
+            final unread = (snapshot.data ?? const [])
+                .where((item) => item['is_read'] != true)
+                .length;
             return IconButton(
               tooltip: _greek ? 'Ειδοποιήσεις' : 'Notifications',
               onPressed: _openNotificationInbox,
-              icon: Badge(isLabelVisible: unread > 0, label: Text(unread > 9 ? '9+' : '$unread'), child: const Icon(Icons.notifications_outlined)),
+              icon: Badge(
+                isLabelVisible: unread > 0,
+                label: Text(unread > 9 ? '9+' : '$unread'),
+                child: const Icon(Icons.notifications_outlined),
+              ),
             );
           },
         ),
         if (!kIsWeb)
           IconButton(
-            tooltip: _greek ? 'Ενεργοποίηση Face ID / δακτυλικού' : 'Enable Face ID / fingerprint',
+            tooltip: _greek
+                ? 'Ενεργοποίηση Face ID / δακτυλικού'
+                : 'Enable Face ID / fingerprint',
             onPressed: _enableBiometrics,
             icon: const Icon(Icons.fingerprint),
           ),
@@ -553,9 +847,7 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
                           _greek
                               ? 'Πού θέλεις να πας;'
                               : 'Where would you like to go?',
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleLarge
+                          style: Theme.of(context).textTheme.titleLarge
                               ?.copyWith(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w700,
@@ -846,12 +1138,13 @@ class _RoleCard extends StatelessWidget {
             style: TextStyle(color: colors.onSurfaceVariant, height: 1.35),
           ),
         ),
-        trailing: Icon(Icons.arrow_forward_ios_rounded,
-            size: 16, color: colors.primary.withOpacity(.7)),
+        trailing: Icon(
+          Icons.arrow_forward_ios_rounded,
+          size: 16,
+          color: colors.primary.withOpacity(.7),
+        ),
         onTap: onTap,
       ),
     );
   }
 }
-
-
