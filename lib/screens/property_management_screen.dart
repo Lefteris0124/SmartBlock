@@ -2,6 +2,7 @@ import 'package:flutter/material.dart' hide Text;
 import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import '../smartblock_text.dart';
 
 class PropertyManagementScreen extends StatefulWidget {
@@ -9,6 +10,7 @@ class PropertyManagementScreen extends StatefulWidget {
     required this.propertyId,
     required this.propertyName,
     this.totalApartments,
+    this.initialSection,
     required this.isGreek,
     super.key,
   });
@@ -16,6 +18,7 @@ class PropertyManagementScreen extends StatefulWidget {
   final String propertyId;
   final String propertyName;
   final int? totalApartments;
+  final String? initialSection;
   final bool isGreek;
 
   @override
@@ -30,7 +33,11 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
   bool busy = false;
   bool canManage = false;
   bool _managementPolicyAccepted = false;
-  final TextEditingController _authorizationLimitController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _focusKey = GlobalKey();
+  bool _focusScheduled = false;
+  final TextEditingController _authorizationLimitController =
+      TextEditingController();
 
   @override
   void initState() {
@@ -41,6 +48,7 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
   @override
   void dispose() {
     _authorizationLimitController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -121,7 +129,11 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
         'list_property_residents',
         params: {'p_property_id': widget.propertyId},
       ),
-      db.from('property_management_policies').select().eq('property_id', widget.propertyId).maybeSingle(),
+      db
+          .from('property_management_policies')
+          .select()
+          .eq('property_id', widget.propertyId)
+          .maybeSingle(),
     ]);
     return {
       'contracts': List<Map<String, dynamic>>.from(values[0]),
@@ -149,22 +161,33 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
   }
 
   Future<void> _saveManagementPolicy() async {
-    final limit = num.tryParse(_authorizationLimitController.text.trim().replaceAll(',', '.'));
+    final limit = num.tryParse(
+      _authorizationLimitController.text.trim().replaceAll(',', '.'),
+    );
     if (limit == null || limit < 0 || !_managementPolicyAccepted) {
-      _message(gr
-          ? 'Βάλε έγκυρο όριο € και επιβεβαίωσε τους όρους.'
-          : 'Enter a valid € limit and accept the terms.');
+      _message(
+        gr
+            ? 'Βάλε έγκυρο όριο € και επιβεβαίωσε τους όρους.'
+            : 'Enter a valid € limit and accept the terms.',
+      );
       return;
     }
     setState(() => busy = true);
     try {
-      await db.rpc('save_property_management_policy', params: {
-        'p_property_id': widget.propertyId,
-        'p_authorization_limit_eur': limit,
-        'p_accept': true,
-      });
+      await db.rpc(
+        'save_property_management_policy',
+        params: {
+          'p_property_id': widget.propertyId,
+          'p_authorization_limit_eur': limit,
+          'p_accept': true,
+        },
+      );
       _managementPolicyAccepted = false;
-      _message(gr ? 'Όροι και όριο εξουσιοδότησης αποθηκεύτηκαν.' : 'Management terms and authorization limit saved.');
+      _message(
+        gr
+            ? 'Όροι και όριο εξουσιοδότησης αποθηκεύτηκαν.'
+            : 'Management terms and authorization limit saved.',
+      );
       await _refresh();
     } catch (error) {
       _message('${gr ? 'Δεν αποθηκεύτηκε' : 'Could not save'}: $error');
@@ -181,39 +204,66 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(gr ? 'Όροι και εξουσιοδότηση διαχείρισης' : 'Management terms and authorization', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          Text(gr
-              ? 'Ο ιδιοκτήτης εξουσιοδοτεί την ομάδα SmartBlock να συντονίζει τις επιλεγμένες υπηρεσίες και να εγκρίνει δαπάνες μέχρι το παρακάτω όριο ανά περιστατικό. Για μεγαλύτερο ποσό απαιτείται προηγούμενη έγκριση μέσα από την εφαρμογή. Οι καταχωρίσεις και αλλαγές διατηρούν αυτόματα ημερομηνία, ώρα και όνομα λογαριασμού. Η εξουσιοδότηση ισχύει μόνο για αυτό το ακίνητο και δεν αντικαθιστά ξεχωριστή σύμβαση ή ασφαλιστικούς όρους.'
-              : 'The owner authorizes the SmartBlock team to coordinate selected services and approve expenses up to the per-incident limit below. Amounts above the limit require prior in-app approval. Entries and changes are automatically recorded with date, time, and account name. This authorization applies only to this property and does not replace a separate contract or insurance terms.'),
-          const SizedBox(height: 10),
-          TextFormField(
-            controller: _authorizationLimitController,
-            enabled: canManage && !busy,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(labelText: gr ? 'Μέγιστο ποσό χωρίς νέα έγκριση (€)' : 'Maximum amount before approval (€)'),
-          ),
-          if (policy != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text(gr
-                  ? 'Τελευταία αποδοχή: ${policy['accepted_by_name']} · ${policy['accepted_at']}'
-                  : 'Last accepted by ${policy['accepted_by_name']} · ${policy['accepted_at']}'),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              gr
+                  ? 'Όροι και εξουσιοδότηση διαχείρισης'
+                  : 'Management terms and authorization',
+              style: Theme.of(context).textTheme.titleMedium,
             ),
-          CheckboxListTile(
-            contentPadding: EdgeInsets.zero,
-            value: _managementPolicyAccepted,
-            onChanged: !canManage || busy ? null : (value) => setState(() => _managementPolicyAccepted = value == true),
-            title: Text(gr ? 'Επιβεβαιώνω ότι έχω δικαίωμα αποδοχής για το ακίνητο.' : 'I confirm I am authorized to accept this for the property.'),
-          ),
-          if (canManage)
-            Align(alignment: Alignment.centerRight, child: FilledButton.icon(
-              onPressed: busy ? null : _saveManagementPolicy,
-              icon: const Icon(Icons.verified_user_outlined),
-              label: Text(gr ? 'Αποθήκευση όρων' : 'Save terms'),
-            )),
-        ]),
+            const SizedBox(height: 8),
+            Text(
+              gr
+                  ? 'Ο ιδιοκτήτης εξουσιοδοτεί την ομάδα SmartBlock να συντονίζει τις επιλεγμένες υπηρεσίες και να εγκρίνει δαπάνες μέχρι το παρακάτω όριο ανά περιστατικό. Για μεγαλύτερο ποσό απαιτείται προηγούμενη έγκριση μέσα από την εφαρμογή. Οι καταχωρίσεις και αλλαγές διατηρούν αυτόματα ημερομηνία, ώρα και όνομα λογαριασμού. Η εξουσιοδότηση ισχύει μόνο για αυτό το ακίνητο και δεν αντικαθιστά ξεχωριστή σύμβαση ή ασφαλιστικούς όρους.'
+                  : 'The owner authorizes the SmartBlock team to coordinate selected services and approve expenses up to the per-incident limit below. Amounts above the limit require prior in-app approval. Entries and changes are automatically recorded with date, time, and account name. This authorization applies only to this property and does not replace a separate contract or insurance terms.',
+            ),
+            const SizedBox(height: 10),
+            TextFormField(
+              controller: _authorizationLimitController,
+              enabled: canManage && !busy,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: InputDecoration(
+                labelText: gr
+                    ? 'Μέγιστο ποσό χωρίς νέα έγκριση (€)'
+                    : 'Maximum amount before approval (€)',
+              ),
+            ),
+            if (policy != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  gr
+                      ? 'Τελευταία αποδοχή: ${policy['accepted_by_name']} · ${policy['accepted_at']}'
+                      : 'Last accepted by ${policy['accepted_by_name']} · ${policy['accepted_at']}',
+                ),
+              ),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _managementPolicyAccepted,
+              onChanged: !canManage || busy
+                  ? null
+                  : (value) => setState(
+                      () => _managementPolicyAccepted = value == true,
+                    ),
+              title: Text(
+                gr ? 'Επιβεβαιώνω ότι έχω δικαίωμα αποδοχής για το ακίνητο.' : 'I confirm I am authorized to accept this for the property.',
+              ),
+            ),
+            if (canManage)
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton.icon(
+                  onPressed: busy ? null : _saveManagementPolicy,
+                  icon: const Icon(Icons.verified_user_outlined),
+                  label: Text(gr ? 'Αποθήκευση όρων' : 'Save terms'),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -2482,6 +2532,19 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
   }
 
   Widget _body(Map<String, dynamic> d) {
+    if (widget.initialSection != null && !_focusScheduled) {
+      _focusScheduled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final target = _focusKey.currentContext;
+        if (target != null) {
+          Scrollable.ensureVisible(
+            target,
+            duration: const Duration(milliseconds: 350),
+            alignment: .08,
+          );
+        }
+      });
+    }
     final entries = d['charge_entries'] as List<Map<String, dynamic>>;
     final expenses = d['expenses'] as List<Map<String, dynamic>>;
     final serviceRequests = d['service_requests'] as List<Map<String, dynamic>>;
@@ -2626,13 +2689,16 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
     return RefreshIndicator(
       onRefresh: _refresh,
       child: ListView(
+        controller: _scrollController,
         padding: const EdgeInsets.all(16),
         children: [
           Text(
             widget.propertyName,
             style: Theme.of(context).textTheme.headlineSmall,
           ),
-          _managementPolicyCard(d['management_policy'] as Map<String, dynamic>?),
+          _managementPolicyCard(
+            d['management_policy'] as Map<String, dynamic>?,
+          ),
           if (alerts.isNotEmpty)
             Card(
               color: Theme.of(context).colorScheme.tertiaryContainer,
@@ -2752,16 +2818,31 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
             _newService,
             'service',
           ),
-          _section(
-            gr
-                ? 'Υπηρεσίες και αναφορές βλαβών'
-                : 'Services and problem reports',
-            Icons.handyman_outlined,
-            serviceRequests,
-            _newServiceRequest,
-            'service_request',
-            allowMemberRequests: true,
-          ),
+          if (widget.initialSection == 'service_request')
+            Container(
+              key: _focusKey,
+              child: _section(
+                gr
+                    ? 'Υπηρεσίες και αναφορές βλαβών'
+                    : 'Services and problem reports',
+                Icons.handyman_outlined,
+                serviceRequests,
+                _newServiceRequest,
+                'service_request',
+                allowMemberRequests: true,
+              ),
+            )
+          else
+            _section(
+              gr
+                  ? 'Υπηρεσίες και αναφορές βλαβών'
+                  : 'Services and problem reports',
+              Icons.handyman_outlined,
+              serviceRequests,
+              _newServiceRequest,
+              'service_request',
+              allowMemberRequests: true,
+            ),
           _section(
             gr ? 'Ένοικοι ανά διαμέρισμα' : 'Residents by apartment',
             Icons.people_alt_outlined,
@@ -2799,13 +2880,25 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
             _newInsuranceClaim,
             'claim',
           ),
-          _section(
-            gr ? 'Συνελεύσεις και πρακτικά' : 'Meetings and minutes',
-            Icons.groups_outlined,
-            d['meetings'],
-            _newMeeting,
-            'meeting',
-          ),
+          if (widget.initialSection == 'meeting')
+            Container(
+              key: _focusKey,
+              child: _section(
+                gr ? 'Συνελεύσεις και πρακτικά' : 'Meetings and minutes',
+                Icons.groups_outlined,
+                d['meetings'],
+                _newMeeting,
+                'meeting',
+              ),
+            )
+          else
+            _section(
+              gr ? 'Συνελεύσεις και πρακτικά' : 'Meetings and minutes',
+              Icons.groups_outlined,
+              d['meetings'],
+              _newMeeting,
+              'meeting',
+            ),
           _section(
             gr ? 'Παράδοση και παραλαβή διαχείρισης' : 'Management handover',
             Icons.swap_horiz_outlined,
@@ -2862,4 +2955,3 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
     ),
   );
 }
-
