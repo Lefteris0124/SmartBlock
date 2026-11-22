@@ -583,8 +583,8 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
                 icon: Icons.visibility_outlined,
                 title: _greek ? 'Προβολή ως χρήστης' : 'Preview as user',
                 detail: _greek
-                    ? 'Δες πώς οργανώνονται οι λειτουργίες για ιδιοκτήτες και ενοικιαστές.'
-                    : 'Preview how the app is organized for owners and tenants.',
+                    ? 'Άνοιξε τις λειτουργίες ιδιοκτήτη ή ενοικιαστή με ενδεικτικά δεδομένα.'
+                    : 'Open owner or tenant features with sample data.',
                 onTap: () => _open(const RolePreviewScreen()),
               ),
             if (access.isAdmin)

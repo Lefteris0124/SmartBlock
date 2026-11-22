@@ -235,6 +235,12 @@ class _AdminReviewScreenState extends State<AdminReviewScreen>
         builder: (dialogContext, setDialog) => AlertDialog(
           title: Text(gr ? 'Δικαιώματα λογαριασμού' : 'Account roles'),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(gr
+                  ? 'Ο ρόλος admin είναι ξεχωριστό δικαίωμα. Μπορεί να συνυπάρχει με ιδιοκτήτη ή ενοικιαστή.'
+                  : 'Admin access is separate and can coexist with owner or tenant roles.'),
+            ),
             CheckboxListTile(
               value: selected.contains('property_owner'),
               title: Text(gr ? 'Ιδιοκτήτης' : 'Property owner'),
@@ -784,6 +790,7 @@ class _AdminReviewScreenState extends State<AdminReviewScreen>
     ]),
   );
 }
+
 
 
 
