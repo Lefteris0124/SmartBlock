@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart' hide Text;
@@ -114,6 +115,8 @@ class _PropertyOwnersScreenState extends State<PropertyOwnersScreen> {
     var accounts = <Map<String, dynamic>>[];
     var searching = false;
     var hasSearched = false;
+    var searchVersion = 0;
+    Timer? searchDebounce;
     String? searchError;
     String? selectedUserId;
     final selected = await showDialog<Map<String, dynamic>>(
@@ -121,6 +124,8 @@ class _PropertyOwnersScreenState extends State<PropertyOwnersScreen> {
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialog) {
           Future<void> searchAccounts() async {
+            searchDebounce?.cancel();
+            final requestVersion = ++searchVersion;
             final query = searchController.text.trim();
             if (query.length < 3) {
               setDialog(() {
@@ -128,6 +133,7 @@ class _PropertyOwnersScreenState extends State<PropertyOwnersScreen> {
                     ? 'Γράψε τουλάχιστον 3 χαρακτήρες.'
                     : 'Enter at least 3 characters.';
                 accounts = [];
+                searching = false;
                 hasSearched = false;
               });
               return;
@@ -145,18 +151,24 @@ class _PropertyOwnersScreenState extends State<PropertyOwnersScreen> {
                   'p_search': query,
                 },
               );
-              setDialog(() {
-                accounts = List<Map<String, dynamic>>.from(result);
-                hasSearched = true;
-              });
+              if (requestVersion == searchVersion) {
+                setDialog(() {
+                  accounts = List<Map<String, dynamic>>.from(result);
+                  hasSearched = true;
+                });
+              }
             } on PostgrestException catch (error) {
-              setDialog(() {
-                searchError = error.message;
-                accounts = [];
-                hasSearched = true;
-              });
+              if (requestVersion == searchVersion) {
+                setDialog(() {
+                  searchError = error.message;
+                  accounts = [];
+                  hasSearched = true;
+                });
+              }
             } finally {
-              setDialog(() => searching = false);
+              if (requestVersion == searchVersion) {
+                setDialog(() => searching = false);
+              }
             }
           }
 
@@ -170,19 +182,40 @@ class _PropertyOwnersScreenState extends State<PropertyOwnersScreen> {
               child: Column(
                 children: [
                   Text(_greek
-                      ? 'Αναζήτησε με το όνομα, το email ή το τηλέφωνο που χρησιμοποίησε στην εγγραφή. Εμφανίζονται εγκεκριμένοι λογαριασμοί ιδιοκτητών.'
-                      : 'Search by the name, email or phone used during sign-up. Only approved owner accounts are shown.'),
+                      ? 'Πληκτρολόγησε τα πρώτα 3 γράμματα του email για να εμφανιστούν σχετικά αποτελέσματα αυτόματα. Μπορείς επίσης να ψάξεις με όνομα ή τηλέφωνο. Εμφανίζονται μόνο εγκεκριμένοι ιδιοκτήτες.'
+                      : 'Type the first 3 characters of the email to see matching accounts automatically. You can also search by name or phone. Only approved owners are shown.'),
                   const SizedBox(height: 12),
                   Row(children: [
                     Expanded(
                       child: TextField(
                         controller: searchController,
                         autofocus: true,
+                        onChanged: (value) {
+                          searchDebounce?.cancel();
+                          searchVersion++;
+                          selectedUserId = null;
+                          final query = value.trim();
+                          setDialog(() {
+                            searchError = null;
+                            accounts = [];
+                            hasSearched = false;
+                            searching = query.length >= 3;
+                          });
+                          if (query.length >= 3) {
+                            searchDebounce = Timer(
+                              const Duration(milliseconds: 350),
+                              searchAccounts,
+                            );
+                          }
+                        },
                         onSubmitted: (_) => searchAccounts(),
                         decoration: InputDecoration(
                           labelText: _greek
-                              ? 'Όνομα, email ή τηλέφωνο'
-                              : 'Name, email or phone',
+                              ? 'Αρχικά email, όνομα ή τηλέφωνο'
+                              : 'Email prefix, name or phone',
+                          hintText: _greek
+                              ? 'π.χ. lef'
+                              : 'e.g. joh',
                         ),
                       ),
                     ),
