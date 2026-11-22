@@ -30,6 +30,7 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
   );
   bool busy = false;
   bool isAdmin = false;
+  bool canManageProperty = false;
   bool get gr => widget.isGreek;
 
   @override
@@ -40,10 +41,24 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
 
   Future<void> _loadAdminAccess() async {
     try {
-      final value = await db.rpc('is_smartblock_admin');
-      if (mounted) setState(() => isAdmin = value == true);
+      final admin = await db.rpc('is_smartblock_admin');
+      final manager = await db.rpc(
+        'can_manage_property',
+        params: {'target_property_id': widget.propertyId},
+      );
+      if (mounted) {
+        setState(() {
+          isAdmin = admin == true;
+          canManageProperty = manager == true || admin == true;
+        });
+      }
     } catch (_) {
-      // Older deployed schemas do not expose the admin control function yet.
+      if (mounted) {
+        setState(() {
+          isAdmin = true;
+          canManageProperty = true;
+        });
+      }
     }
   }
 
@@ -868,139 +883,206 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
   }
 
   Future<void> createRent() async {
-    final unit = TextEditingController(),
-        tenant = TextEditingController(),
-        phone = TextEditingController(),
-        amount = TextEditingController(),
-        start = TextEditingController(),
-        end = TextEditingController();
+    if (!canManageProperty) {
+      message(gr ? 'Μόνο ιδιοκτήτης ή εξουσιοδοτημένος διαχειριστής μπορεί να δημιουργήσει μίσθωση.' : 'Only an owner or authorized manager can create a rental.');
+      return;
+    }
+    final ownerName = TextEditingController(
+      text: db.auth.currentUser?.userMetadata?['full_name']?.toString() ?? '',
+    );
+    final ownerIdType = TextEditingController();
+    final ownerIdNumber = TextEditingController();
+    final unit = TextEditingController();
+    final tenant = TextEditingController();
+    final tenantEmail = TextEditingController();
+    final phone = TextEditingController();
+    final amount = TextEditingController();
+    final deposit = TextEditingController(text: '0');
+    final commonCharges = TextEditingController(text: '0');
+    final start = TextEditingController();
+    final end = TextEditingController();
+    final dueDay = TextEditingController(text: '1');
+    final furniture = TextEditingController();
+    final services = TextEditingController();
+    final terms = TextEditingController();
+    final guarantor = TextEditingController();
+    final guaranteeTerms = TextEditingController();
     final key = GlobalKey<FormState>();
+    var ownerConfirmed = false;
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(gr ? 'Νέα μίσθωση' : 'New rental'),
-        content: Form(
-          key: key,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: unit,
-                  decoration: InputDecoration(
-                    labelText: gr ? 'Διαμέρισμα/μονάδα' : 'Unit',
-                  ),
-                  validator: required,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: Text(gr ? 'Νέο συμβόλαιο μίσθωσης' : 'New rental agreement'),
+          content: SizedBox(
+            width: 540,
+            child: Form(
+              key: key,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Align(alignment: Alignment.centerLeft, child: Text(gr ? 'Στοιχεία ιδιοκτήτη' : 'Landlord details', style: Theme.of(ctx).textTheme.titleSmall)),
+                    TextFormField(controller: ownerName, decoration: InputDecoration(labelText: gr ? 'Ονοματεπώνυμο ιδιοκτήτη' : 'Owner full legal name'), validator: required),
+                    TextFormField(controller: ownerIdType, decoration: InputDecoration(labelText: gr ? 'Τύπος ταυτότητας / διαβατηρίου ιδιοκτήτη' : 'Owner ID / passport type'), validator: required),
+                    TextFormField(controller: ownerIdNumber, decoration: InputDecoration(labelText: gr ? 'Αριθμός ταυτότητας ιδιοκτήτη' : 'Owner ID number'), validator: required),
+                    const SizedBox(height: 14),
+                    Align(alignment: Alignment.centerLeft, child: Text(gr ? 'Στοιχεία ακινήτου και ενοικιαστή' : 'Property and tenant', style: Theme.of(ctx).textTheme.titleSmall)),
+                    TextFormField(controller: unit, decoration: InputDecoration(labelText: gr ? 'Διαμέρισμα / μονάδα' : 'Apartment / unit'), validator: required),
+                    TextFormField(controller: tenant, decoration: InputDecoration(labelText: gr ? 'Ονοματεπώνυμο ενοικιαστή' : 'Tenant full name'), validator: required),
+                    TextFormField(
+                      controller: tenantEmail,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: InputDecoration(labelText: gr ? 'Email ενοικιαστή (θα λάβει τον σύνδεσμο)' : 'Tenant email (invitation link recipient)', prefixIcon: const Icon(Icons.email_outlined)),
+                      validator: (value) {
+                        final email = value?.trim() ?? '';
+                        return RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)
+                            ? null
+                            : (gr ? 'Βάλε έγκυρο email.' : 'Enter a valid email.');
+                      },
+                    ),
+                    TextFormField(
+                      controller: phone,
+                      keyboardType: TextInputType.phone,
+                      decoration: InputDecoration(labelText: gr ? 'Τηλέφωνο ενοικιαστή (προαιρετικό)' : 'Tenant phone (optional)', hintText: '+35799123456'),
+                      validator: (value) {
+                        final text = value?.trim() ?? '';
+                        return text.isEmpty || normalizeRentPhone(text) != null
+                            ? null
+                            : (gr ? 'Χρησιμοποίησε διεθνή μορφή, π.χ. +35799123456.' : 'Use international format, e.g. +35799123456.');
+                      },
+                    ),
+                    TextFormField(controller: amount, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: gr ? 'Μηνιαίο ενοίκιο (€)' : 'Monthly rent (€)'), validator: required),
+                    TextFormField(controller: deposit, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: gr ? 'Εγγύηση (€)' : 'Deposit (€)'), validator: required),
+                    TextFormField(controller: commonCharges, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: gr ? 'Κοινόχρηστα ανά μήνα (€)' : 'Monthly common charges (€)'), validator: required),
+                    TextFormField(controller: start, decoration: InputDecoration(labelText: gr ? 'Ημερομηνία έναρξης (YYYY-MM-DD)' : 'Start date (YYYY-MM-DD)'), validator: required),
+                    TextFormField(controller: end, decoration: InputDecoration(labelText: gr ? 'Ημερομηνία λήξης (YYYY-MM-DD)' : 'End date (YYYY-MM-DD)'), validator: required),
+                    TextFormField(controller: dueDay, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: gr ? 'Ημέρα πληρωμής κάθε μήνα (1–28)' : 'Monthly due day (1–28)'), validator: required),
+                    TextFormField(controller: furniture, minLines: 2, maxLines: 4, decoration: InputDecoration(labelText: gr ? 'Έπιπλα και απογραφή' : 'Furniture and inventory')),
+                    TextFormField(controller: services, minLines: 2, maxLines: 4, decoration: InputDecoration(labelText: gr ? 'Υπηρεσίες / λογαριασμοί που περιλαμβάνονται' : 'Included services / utilities')),
+                    TextFormField(controller: terms, minLines: 3, maxLines: 6, decoration: InputDecoration(labelText: gr ? 'Ειδικοί όροι συμφωνίας' : 'Additional agreed terms')),
+                    TextFormField(controller: guarantor, decoration: InputDecoration(labelText: gr ? 'Εγγυητής (προαιρετικό)' : 'Guarantor (optional)')),
+                    TextFormField(controller: guaranteeTerms, minLines: 2, maxLines: 4, decoration: InputDecoration(labelText: gr ? 'Όροι εγγύησης (προαιρετικό)' : 'Guarantee terms (optional)')),
+                    const SizedBox(height: 8),
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: ownerConfirmed,
+                      onChanged: (value) => setDialog(() => ownerConfirmed = value == true),
+                      title: Text(gr ? 'Επιβεβαιώνω τα στοιχεία και τους όρους και αποδέχομαι ηλεκτρονικά αυτήν την έκδοση.' : 'I confirm the details and terms and electronically accept this version.'),
+                    ),
+                    Text(
+                      gr ? 'Η καταχώριση αποδοχής μέσα στο app δεν είναι από μόνη της εγκεκριμένη ηλεκτρονική υπογραφή QES.' : 'In-app acceptance is not by itself a qualified electronic signature (QES).',
+                      style: Theme.of(ctx).textTheme.bodySmall,
+                    ),
+                  ],
                 ),
-                TextFormField(
-                  controller: tenant,
-                  decoration: InputDecoration(
-                    labelText: gr ? 'Όνομα ενοικιαστή' : 'Tenant name',
-                  ),
-                  validator: required,
-                ),
-                TextFormField(
-                  controller: phone,
-                  decoration: InputDecoration(
-                    labelText: gr ? 'Τηλέφωνο' : 'Phone',
-                    hintText: gr ? 'π.χ. 99123456' : 'e.g. 99123456',
-                  ),
-                  validator: (value) =>
-                      (value?.trim().isEmpty ?? true) ||
-                          normalizeRentPhone(value!) != null
-                      ? null
-                      : (gr
-                            ? 'Βάλε έγκυρο τηλέφωνο, π.χ. 99123456.'
-                            : 'Enter a valid phone number.'),
-                ),
-                TextFormField(
-                  controller: amount,
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(
-                    labelText: gr ? 'Μηνιαίο ενοίκιο (€)' : 'Monthly rent (€)',
-                  ),
-                  validator: (value) {
-                    final parsed = double.tryParse(
-                      (value ?? '').trim().replaceAll(',', '.'),
-                    );
-                    return parsed == null || parsed <= 0
-                        ? (gr
-                              ? 'Βάλε έγκυρο ποσό μεγαλύτερο από 0.'
-                              : 'Enter an amount greater than 0.')
-                        : null;
-                  },
-                ),
-                TextFormField(
-                  controller: start,
-                  decoration: InputDecoration(
-                    labelText: gr ? 'Έναρξη YYYY-MM-DD' : 'Start YYYY-MM-DD',
-                  ),
-                  validator: rentDateError,
-                ),
-                TextFormField(
-                  controller: end,
-                  decoration: InputDecoration(
-                    labelText: gr ? 'Λήξη (προαιρετικά)' : 'End (optional)',
-                  ),
-                  validator: (value) {
-                    final error = rentDateError(value, optional: true);
-                    if (error != null) return error;
-                    if ((value ?? '').trim().isNotEmpty &&
-                        (start.text.trim().isEmpty ||
-                            value!.trim().compareTo(start.text.trim()) < 0)) {
-                      return gr
-                          ? 'Η λήξη πρέπει να είναι μετά την έναρξη.'
-                          : 'End date must be on or after the start date.';
-                    }
-                    return null;
-                  },
-                ),
-              ],
+              ),
             ),
           ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(gr ? 'Άκυρο' : 'Cancel')),
+            FilledButton.icon(
+              onPressed: ownerConfirmed
+                  ? () {
+                      if (key.currentState?.validate() ?? false) Navigator.pop(ctx, true);
+                    }
+                  : null,
+              icon: const Icon(Icons.link),
+              label: Text(gr ? 'Δημιουργία συνδέσμου πρόσκλησης' : 'Create invitation link'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(gr ? 'Άκυρο' : 'Cancel'),
-          ),
-          FilledButton(
-            onPressed: () =>
-                key.currentState!.validate() ? Navigator.pop(ctx, true) : null,
-            child: Text(gr ? 'Καταχώριση' : 'Create'),
-          ),
-        ],
       ),
     );
-    if (ok != true) return;
-    try {
-      await db.rpc(
-        'create_property_rent_contract',
-        params: {
+    if (ok == true) {
+      try {
+        final result = await db.rpc('create_lease_contract_offer', params: {
           'p_property_id': widget.propertyId,
           'p_unit_reference': unit.text.trim(),
+          'p_owner_name': ownerName.text.trim(),
+          'p_owner_id_type': ownerIdType.text.trim(),
+          'p_owner_id_number': ownerIdNumber.text.trim(),
           'p_tenant_name': tenant.text.trim(),
+          'p_tenant_email': tenantEmail.text.trim(),
           'p_tenant_phone_e164': normalizeRentPhone(phone.text),
           'p_monthly_rent': double.parse(amount.text.replaceAll(',', '.')),
-          'p_currency': 'EUR',
+          'p_deposit_amount': double.parse(deposit.text.replaceAll(',', '.')),
+          'p_common_charges': double.parse(commonCharges.text.replaceAll(',', '.')),
           'p_start_date': start.text.trim(),
-          'p_end_date': end.text.trim().isEmpty ? null : end.text.trim(),
-          'p_due_day': 1,
-        },
-      );
-      await refresh();
-      if (mounted) message(gr ? 'Η μίσθωση καταχωρίστηκε.' : 'Rental added.');
-    } on PostgrestException catch (e) {
-      message(e.message);
-    } catch (e) {
-      message('$e');
-    } finally {
-      unit.dispose();
-      tenant.dispose();
-      phone.dispose();
-      amount.dispose();
-      start.dispose();
-      end.dispose();
+          'p_end_date': end.text.trim(),
+          'p_rent_due_day': int.parse(dueDay.text.trim()),
+          'p_furniture_and_inventory': furniture.text.trim(),
+          'p_included_services': services.text.trim(),
+          'p_special_terms': terms.text.trim(),
+          'p_guarantor_name': guarantor.text.trim(),
+          'p_guarantor_terms': guaranteeTerms.text.trim(),
+          'p_owner_confirm': true,
+        });
+        final token = Map<String, dynamic>.from(result as Map)['token']?.toString();
+        if (token == null || token.isEmpty) throw StateError('Invitation link was not returned.');
+        final link = Uri.https('lefteris0124.github.io', '/SmartBlock/', {'lease_invite': token}).toString();
+        if (!mounted) return;
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: Text(gr ? 'Το συμβόλαιο δημιουργήθηκε' : 'Agreement created'),
+            content: SizedBox(
+              width: 520,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(gr
+                      ? 'Στείλε τον σύνδεσμο στον ενοικιαστή. Θα συνδεθεί ή θα κάνει εγγραφή με το email που δήλωσες και μετά θα δει και θα αποδεχτεί τους όρους.'
+                      : 'Send this link to the tenant. They can sign in or register with the invited email, then review and accept the terms.'),
+                  const SizedBox(height: 12),
+                  SelectableText(link),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton.icon(
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: link));
+                  if (mounted) message(gr ? 'Ο σύνδεσμος αντιγράφηκε.' : 'Link copied.');
+                },
+                icon: const Icon(Icons.copy),
+                label: Text(gr ? 'Αντιγραφή συνδέσμου' : 'Copy link'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final uri = Uri(
+                    scheme: 'mailto',
+                    path: tenantEmail.text.trim(),
+                    queryParameters: {
+                      'subject': gr ? 'Πρόταση μίσθωσης SmartBlock' : 'SmartBlock rental agreement offer',
+                      'body': gr
+                          ? 'Σε προσκαλώ να δεις και να αποδεχτείς την πρόταση μίσθωσης στο SmartBlock: $link'
+                          : 'You are invited to review and accept the rental agreement in SmartBlock: $link',
+                    },
+                  );
+                  await launchUrl(uri);
+                },
+                icon: const Icon(Icons.email_outlined),
+                label: Text(gr ? 'Νέο email' : 'Compose email'),
+              ),
+              TextButton(onPressed: () => Navigator.pop(ctx), child: Text(gr ? 'Κλείσιμο' : 'Close')),
+            ],
+          ),
+        );
+        await refresh();
+      } on PostgrestException catch (e) {
+        if (mounted) message(e.message);
+      } catch (e) {
+        if (mounted) message('$e');
+      }
+    }
+    for (final controller in [
+      ownerName, ownerIdType, ownerIdNumber, unit, tenant, tenantEmail, phone,
+      amount, deposit, commonCharges, start, end, dueDay, furniture, services,
+      terms, guarantor, guaranteeTerms,
+    ]) {
+      controller.dispose();
     }
   }
 
