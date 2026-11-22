@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart' hide Text;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../smartblock_trial_session.dart';
 import '../app_language.dart';
 import '../smartblock_text.dart';
 
@@ -44,7 +45,7 @@ class PropertyDetailsScreen extends StatefulWidget {
 }
 
 class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
-  final SupabaseClient _client = Supabase.instance.client;
+  final SupabaseClient _client = SmartBlockTrialSession.client;
   late Map<String, dynamic> _property;
   late bool _isGreek;
   late Future<_ReviewReadiness> _reviewReadinessFuture;
@@ -719,3 +720,4 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
   );
 }
 
+\n

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'smartblock_trial_session.dart';
 
 class SmartBlockLanguage {
   const SmartBlockLanguage(this.code, this.nativeName);
@@ -58,10 +59,10 @@ class SmartBlockLanguageController {
     selected.value = language;
     final preferences = await SharedPreferences.getInstance();
     await preferences.setString(_preferenceKey, language.code);
-    final user = Supabase.instance.client.auth.currentUser;
+    final user = SmartBlockTrialSession.client.auth.currentUser;
     if (user != null) {
       try {
-        await Supabase.instance.client.auth.updateUser(
+        await SmartBlockTrialSession.client.auth.updateUser(
           UserAttributes(data: {'preferred_language': language.code}),
         );
       } catch (error) {
@@ -71,7 +72,7 @@ class SmartBlockLanguageController {
   }
 
   Future<void> syncAfterSignIn() async {
-    final user = Supabase.instance.client.auth.currentUser;
+    final user = SmartBlockTrialSession.client.auth.currentUser;
     if (user == null) return;
     final accountCode = user.userMetadata?['preferred_language'] as String?;
     if (accountCode != null &&
@@ -81,7 +82,7 @@ class SmartBlockLanguageController {
       await preferences.setString(_preferenceKey, accountCode);
     } else {
       try {
-        await Supabase.instance.client.auth.updateUser(
+        await SmartBlockTrialSession.client.auth.updateUser(
           UserAttributes(data: {'preferred_language': selected.value.code}),
         );
       } catch (error) {
@@ -137,3 +138,4 @@ class SmartBlockLanguageMenu extends StatelessWidget {
       );
 }
 
+\n

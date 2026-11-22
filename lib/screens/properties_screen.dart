@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart' hide Text;
 import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../smartblock_trial_session.dart';
 
 import 'property_details_screen.dart';
 import 'admin_review_screen.dart';
@@ -31,7 +32,7 @@ class PropertiesScreen extends StatefulWidget {
 }
 
 class _PropertiesScreenState extends State<PropertiesScreen> {
-  final _client = Supabase.instance.client;
+  final _client = SmartBlockTrialSession.client;
   late Future<List<Map<String, dynamic>>> _propertiesFuture;
   late bool _greek;
   late final VoidCallback _languageListener;
@@ -1008,3 +1009,4 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
   );
 }
 
+\n

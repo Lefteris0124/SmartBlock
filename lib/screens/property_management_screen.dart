@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart' hide Text;
 import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../smartblock_trial_session.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../smartblock_text.dart';
@@ -27,7 +28,7 @@ class PropertyManagementScreen extends StatefulWidget {
 }
 
 class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
-  final db = Supabase.instance.client;
+  final db = SmartBlockTrialSession.client;
   late Future<Map<String, dynamic>> data = _load();
   bool get gr => widget.isGreek;
   bool busy = false;
@@ -2955,3 +2956,4 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
     ),
   );
 }
+\n

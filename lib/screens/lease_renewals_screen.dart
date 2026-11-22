@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../smartblock_trial_session.dart';
 
 class LeaseRenewalsScreen extends StatefulWidget {
   const LeaseRenewalsScreen({
@@ -14,7 +15,7 @@ class LeaseRenewalsScreen extends StatefulWidget {
 }
 
 class _LeaseRenewalsScreenState extends State<LeaseRenewalsScreen> {
-  final _db = Supabase.instance.client;
+  final _db = SmartBlockTrialSession.client;
   late Future<List<Map<String, dynamic>>> _rows = _load();
   bool get _gr => widget.isGreek;
   Future<List<Map<String, dynamic>>> _load() async =>
@@ -506,3 +507,4 @@ class _LeaseRenewalsScreenState extends State<LeaseRenewalsScreen> {
   );
 }
 
+\n

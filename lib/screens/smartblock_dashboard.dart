@@ -15,6 +15,7 @@ import 'property_management_screen.dart';
 import 'resident_service_requests_screen.dart';
 import '../app_language.dart';
 import '../smartblock_text.dart';
+import '../smartblock_trial_session.dart';
 
 class SmartBlockDashboard extends StatefulWidget {
   const SmartBlockDashboard({super.key});
@@ -24,7 +25,7 @@ class SmartBlockDashboard extends StatefulWidget {
 }
 
 class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
-  final _client = Supabase.instance.client;
+  final _client = SmartBlockTrialSession.client;
   late Future<_RoleAccess> _access = _loadAccess();
   bool _greek = true;
   dynamic _roleRequestChannel;
@@ -717,6 +718,12 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
     if (mounted) setState(() => _access = _loadAccess());
   }
 
+  Future<void> _leaveTrial() async {
+    await SmartBlockTrialSession.stop();
+    if (!mounted) return;
+    Navigator.of(context).pop();
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
@@ -748,11 +755,18 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
             onPressed: _enableBiometrics,
             icon: const Icon(Icons.fingerprint),
           ),
-        IconButton(
-          tooltip: _greek ? 'Αποσύνδεση' : 'Sign out',
-          onPressed: () => _client.auth.signOut(),
-          icon: const Icon(Icons.logout),
-        ),
+        if (SmartBlockTrialSession.isActive)
+          IconButton(
+            tooltip: _greek ? 'Επιστροφή στον admin' : 'Return to admin',
+            onPressed: _leaveTrial,
+            icon: const Icon(Icons.admin_panel_settings_outlined),
+          )
+        else
+          IconButton(
+            tooltip: _greek ? 'Αποσύνδεση' : 'Sign out',
+            onPressed: () => _client.auth.signOut(),
+            icon: const Icon(Icons.logout),
+          ),
       ],
     ),
     body: FutureBuilder<_RoleAccess>(
@@ -792,9 +806,8 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
         final approvedRoles = List<String>.from(
           (registration?['requested_roles'] as List?) ?? const [],
         );
-        final showOwner =
-            approvedRoles.contains('property_owner') ||
-            access.ownerHasProperties;
+        final showOwner = approvedRoles.contains('property_owner') ||
+            (registration == null && access.ownerHasProperties);
         final showResident =
             approvedRoles.contains('tenant') ||
             (status == null && access.residentCount > 0);
@@ -806,6 +819,27 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
         return ListView(
           padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
           children: [
+            if (SmartBlockTrialSession.isActive)
+              Card(
+                color: Theme.of(context).colorScheme.tertiaryContainer,
+                child: ListTile(
+                  leading: const Icon(Icons.science_outlined),
+                  title: Text(
+                    _greek
+                        ? 'ΔΟΚΙΜΗ · ${SmartBlockTrialSession.role == 'owner' ? 'Ιδιοκτήτης' : 'Ενοικιαστής'}'
+                        : 'TRIAL · ${SmartBlockTrialSession.role == 'owner' ? 'Owner' : 'Tenant'}',
+                  ),
+                  subtitle: Text(
+                    _greek
+                        ? 'Δοκιμαστικός λογαριασμός και δοκιμαστικά στοιχεία.'
+                        : 'Test account and sample data.',
+                  ),
+                  trailing: TextButton(
+                    onPressed: _leaveTrial,
+                    child: Text(_greek ? 'Έξοδος' : 'Exit'),
+                  ),
+                ),
+              ),
             Container(
               padding: const EdgeInsets.all(22),
               decoration: BoxDecoration(
@@ -875,8 +909,8 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
                 icon: Icons.visibility_outlined,
                 title: _greek ? 'Προβολή ως χρήστης' : 'Preview as user',
                 detail: _greek
-                    ? 'Άνοιξε τις λειτουργίες ιδιοκτήτη ή ενοικιαστή με ενδεικτικά δεδομένα.'
-                    : 'Open owner or tenant features with sample data.',
+                    ? 'Μπες σε ξεχωριστό δοκιμαστικό λογαριασμό με πραγματικά δικαιώματα.'
+                    : 'Enter a separate trial account with real permissions.',
                 onTap: () => _open(const RolePreviewScreen()),
               ),
             if (access.isAdmin)
@@ -1148,3 +1182,4 @@ class _RoleCard extends StatelessWidget {
     );
   }
 }
+\n

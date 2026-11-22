@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart' hide Text;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../smartblock_trial_session.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../smartblock_text.dart';
@@ -21,7 +22,7 @@ class PropertyModulesScreen extends StatefulWidget {
 
 class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     with SingleTickerProviderStateMixin {
-  final db = Supabase.instance.client;
+  final db = SmartBlockTrialSession.client;
   late final tabs = TabController(
     length: 4,
     vsync: this,
@@ -2293,3 +2294,4 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     ),
   );
 }
+\n

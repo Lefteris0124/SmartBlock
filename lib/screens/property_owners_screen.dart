@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart' hide Text;
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../smartblock_trial_session.dart';
 import '../app_language.dart';
 import '../smartblock_text.dart';
 
@@ -24,7 +25,7 @@ class PropertyOwnersScreen extends StatefulWidget {
 }
 
 class _PropertyOwnersScreenState extends State<PropertyOwnersScreen> {
-  final _db = Supabase.instance.client;
+  final _db = SmartBlockTrialSession.client;
   final _picker = ImagePicker();
   late Future<List<Map<String, dynamic>>> _future;
   late bool _greek;
@@ -698,3 +699,4 @@ class _PropertyOwnersScreenState extends State<PropertyOwnersScreen> {
 }
 
 
+\n

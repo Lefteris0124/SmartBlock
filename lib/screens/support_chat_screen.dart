@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart' hide Text;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../smartblock_trial_session.dart';
 import '../smartblock_text.dart';
 
 class SupportChatScreen extends StatefulWidget {
@@ -12,7 +13,7 @@ class SupportChatScreen extends StatefulWidget {
 }
 
 class _SupportChatScreenState extends State<SupportChatScreen> {
-  final _db = Supabase.instance.client;
+  final _db = SmartBlockTrialSession.client;
   late final Future<bool> _staff = _loadStaff();
   late Future<List<Map<String, dynamic>>> _conversations = _loadConversations();
   dynamic _channel;
@@ -373,7 +374,7 @@ class SupportConversationScreen extends StatefulWidget {
 }
 
 class _SupportConversationScreenState extends State<SupportConversationScreen> {
-  final _db = Supabase.instance.client;
+  final _db = SmartBlockTrialSession.client;
   final _messageController = TextEditingController();
   late Future<List<Map<String, dynamic>>> _messages = _loadMessages();
   late String _status = widget.status;
@@ -664,3 +665,4 @@ class _SupportConversationScreenState extends State<SupportConversationScreen> {
   }
 }
 
+\n

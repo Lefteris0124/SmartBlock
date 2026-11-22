@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart' hide Text;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../smartblock_trial_session.dart';
 import '../smartblock_text.dart';
 
 class ResidentServiceRequestsScreen extends StatefulWidget {
@@ -23,7 +24,7 @@ class ResidentServiceRequestsScreen extends StatefulWidget {
 
 class _ResidentServiceRequestsScreenState
     extends State<ResidentServiceRequestsScreen> {
-  final SupabaseClient db = Supabase.instance.client;
+  final SupabaseClient db = SmartBlockTrialSession.client;
   late Future<List<Map<String, dynamic>>> _requests = _loadRequests();
   late Future<List<Map<String, dynamic>>> _services = _loadServices();
   final _formKey = GlobalKey<FormState>();
@@ -484,3 +485,4 @@ class _ResidentServiceRequestsScreenState
     ),
   );
 }
+\n
