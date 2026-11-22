@@ -9,10 +9,12 @@ class PropertyModulesScreen extends StatefulWidget {
     required this.propertyId,
     required this.propertyName,
     required this.isGreek,
+    this.initialTab = 0,
     super.key,
   });
   final String propertyId, propertyName;
   final bool isGreek;
+  final int initialTab;
   @override
   State<PropertyModulesScreen> createState() => _PropertyModulesScreenState();
 }
@@ -20,7 +22,11 @@ class PropertyModulesScreen extends StatefulWidget {
 class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     with SingleTickerProviderStateMixin {
   final db = Supabase.instance.client;
-  late final tabs = TabController(length: 4, vsync: this);
+  late final tabs = TabController(
+    length: 4,
+    vsync: this,
+    initialIndex: widget.initialTab.clamp(0, 3).toInt(),
+  );
   bool busy = false;
   bool isAdmin = false;
   bool get gr => widget.isGreek;
@@ -2287,4 +2293,3 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     ),
   );
 }
-
