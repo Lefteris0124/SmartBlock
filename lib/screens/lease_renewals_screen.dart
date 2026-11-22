@@ -41,10 +41,27 @@ class _LeaseRenewalsScreenState extends State<LeaseRenewalsScreen> {
   String _status(String value) => switch (value) {
     'signed' =>
       _gr
-          ? 'Υπογράφηκε ηλεκτρονικά και από τους δύο'
-          : 'Electronically accepted by both',
+          ? 'Η αποδοχή καταχωρίστηκε και από τους δύο (χωρίς QES)'
+          : 'Accepted by both (without QES)',
     'cancelled' => _gr ? 'Ακυρώθηκε' : 'Cancelled',
     _ => _gr ? 'Αναμένει αποδοχή' : 'Awaiting signatures',
+  };
+
+  String _qesStatus(dynamic value) => switch (value?.toString() ??
+      'not_started') {
+    'document_prepared' => _gr ? 'Έτοιμο για QES' : 'Ready for QES',
+    'in_progress' =>
+      _gr ? 'Υπογραφή QES σε εξέλιξη' : 'QES signing in progress',
+    'partially_signed' =>
+      _gr ? 'Υπογράφηκε από ένα μέρος' : 'Signed by one party',
+    'completed' => _gr ? 'Η QES ολοκληρώθηκε' : 'QES completed',
+    'failed' => _gr ? 'Αποτυχία QES' : 'QES failed',
+    'expired' => _gr ? 'Έληξε το αίτημα QES' : 'QES request expired',
+    'cancelled' => _gr ? 'Ακυρώθηκε το αίτημα QES' : 'QES request cancelled',
+    _ =>
+      _gr
+          ? 'Δεν έχει συνδεθεί ακόμη πάροχος QES'
+          : 'QES provider not connected yet',
   };
 
   Future<void> _review(Map<String, dynamic> row) async {
@@ -173,6 +190,11 @@ class _LeaseRenewalsScreenState extends State<LeaseRenewalsScreen> {
                   Text(
                     _status(row['status'].toString()),
                     style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 6),
+                  _line(
+                    Icons.verified_user_outlined,
+                    '${_gr ? 'Εγκεκριμένη ηλεκτρονική υπογραφή' : 'Qualified electronic signature'}: ${_qesStatus(row['qes_status'])}',
                   ),
                   if (row['owner_signed_at'] != null)
                     Text(
@@ -337,7 +359,9 @@ class _LeaseRenewalsScreenState extends State<LeaseRenewalsScreen> {
                 },
                 icon: const Icon(Icons.draw_outlined),
                 label: Text(
-                  _gr ? 'Ηλεκτρονική αποδοχή' : 'Accept electronically',
+                  _gr
+                      ? 'Καταχώριση αποδοχής (χωρίς QES)'
+                      : 'Record acceptance (without QES)',
                 ),
               ),
             if (widget.isStaff && row['status'] == 'awaiting_signatures')
