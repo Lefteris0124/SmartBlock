@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 10187)
+Total output lines: 1073
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -8,6 +11,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app_language.dart';
 import 'screens/smartblock_dashboard.dart';
+import 'smartblock_trial_session.dart';
 import 'smartblock_text.dart';
 
 Future<void> main() async {
@@ -30,6 +34,8 @@ class SmartBlockApp extends StatefulWidget {
 }
 
 class _SmartBlockAppState extends State<SmartBlockApp> {
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+
   @override
   void initState() {
     super.initState();
@@ -46,6 +52,7 @@ class _SmartBlockAppState extends State<SmartBlockApp> {
     return ValueListenableBuilder<SmartBlockLanguage>(
       valueListenable: SmartBlockLanguageController.instance.selected,
       builder: (context, language, _) => MaterialApp(
+        navigatorKey: _navigatorKey,
         debugShowCheckedModeBanner: false,
         title: 'SmartBlock',
         locale: language.locale,
@@ -121,11 +128,89 @@ class _SmartBlockAppState extends State<SmartBlockApp> {
         home: const CheckoutReturnNotice(child: AuthGate()),
         builder: (context, child) => Directionality(
           textDirection: language.isRtl ? TextDirection.rtl : TextDirection.ltr,
-          child: child ?? const SizedBox.shrink(),
+          child: ValueListenableBuilder<bool>(
+            valueListenable: SmartBlockTrialSession.activeListenable,
+            builder: (context, trialActive, _) => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (trialActive)
+                  _TrialReturnBar(
+                    isGreek: language.isGreek,
+                    role: SmartBlockTrialSession.role,
+                    onReturn: _returnToAdmin,
+                  ),
+                Expanded(child: child ?? const SizedBox.shrink()),
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
+
+  Future<void> _returnToAdmin() async {
+    await SmartBlockTrialSession.stop();
+    _navigatorKey.currentState?.popUntil((route) => route.isFirst);
+  }
+}
+
+class _TrialReturnBar extends StatelessWidget {
+  const _TrialReturnBar({
+    required this.isGreek,
+    required this.role,
+    required this.onReturn,
+  });
+
+  final bool isGreek;
+  final String? role;
+  final VoidCallback onReturn;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: Theme.of(context).colorScheme.tertiaryContainer,
+    child: SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 430;
+            final roleName = role == 'tenant'
+                ? (isGreek ? 'Ενοικιαστής' : 'Tenant')
+                : (isGreek ? 'Ιδιοκτήτης' : 'Owner');
+            return Row(
+              children: [
+                Icon(Icons.science_outlined,
+                    color: Theme.of(context).colorScheme.onTertiaryContainer),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    isGreek
+                        ? 'Λειτουργία δοκιμής · $roleName'
+                        : 'Trial mode · $roleName',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilledButton.tonalIcon(
+                  onPressed: onReturn,
+                  icon: const Icon(Icons.admin_panel_settings_outlined),
+                  tooltip: isGreek ? 'Επιστροφή στον Admin' : 'Return to Admin',
+                  label: Text(
+                    compact
+                        ? (isGreek ? 'Επιστροφή' : 'Return')
+                        : (isGreek ? 'Επιστροφή στον Admin' : 'Return to Admin'),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    ),
+  );
 }
 
 class CheckoutReturnNotice extends StatefulWidget {
@@ -484,25 +569,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isValidEmail(String email) =>
       RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email);
 
-  Future<void> _submitAuth() async {
-    final email = emailController.text.trim();
-    final password = passwordController.text;
-    if (!_isValidEmail(email)) {
-      _showMessage(
-        isGreek
-            ? 'Συμπλήρωσε έγκυρη διεύθυνση email.'
-            : 'Enter a valid email address.',
-      );
-      return;
-    }
-    if (password.isEmpty || (isCreatingAccount && password.length < 8)) {
-      _showMessage(
-        isGreek
-            ? (isCreatingAccount
-                  ? 'Ο κωδικός πρέπει να έχει τουλάχιστον 8 χαρακτήρες.'
-                  : 'Συμπλήρωσε τον κωδικό σου.')
-            : (isCreatingAccount
-                  ? 'Password must be at least 8 characters.'
+  Future<void> _submitAuth()…187 tokens truncated…ast 8 characters.'
                   : 'Enter your password.'),
       );
       return;
@@ -987,4 +1054,5 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
+
 
