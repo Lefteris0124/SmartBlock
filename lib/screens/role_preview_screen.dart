@@ -41,6 +41,7 @@ class _RolePreviewScreenState extends State<RolePreviewScreen> {
   Future<void> _startTrial() async {
     if (_starting) return;
     setState(() => _starting = true);
+    final adminSession = Supabase.instance.client.auth.currentSession;
     SupabaseClient? trialClient;
     try {
       final response = await Supabase.instance.client.functions.invoke(
@@ -59,13 +60,20 @@ class _RolePreviewScreenState extends State<RolePreviewScreen> {
         const String.fromEnvironment('SUPABASE_PUBLISHABLE_KEY'),
       );
       await trialClient.auth.setSession(refreshToken, accessToken: accessToken);
-      await SmartBlockTrialSession.start(client: trialClient, role: _role);
+      await SmartBlockTrialSession.start(
+        client: trialClient,
+        role: _role,
+        adminSession: adminSession,
+      );
       if (!mounted) return;
       await Navigator.of(context).pushReplacement<void, void>(
         MaterialPageRoute<void>(builder: (_) => const SmartBlockDashboard()),
       );
     } catch (error) {
-      await trialClient?.auth.signOut();
+      await SmartBlockTrialSession.restoreAfterFailedStart(
+        adminSession: adminSession,
+        trialClient: trialClient,
+      );
       if (!mounted) return;
       final details = error is FunctionException
           ? error.details.toString()
@@ -173,3 +181,4 @@ class _RolePreviewScreenState extends State<RolePreviewScreen> {
     ),
   );
 }
+
