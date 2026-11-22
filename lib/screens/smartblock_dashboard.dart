@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart' hide Text;
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:local_auth/local_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'admin_review_screen.dart';
@@ -21,8 +24,10 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
   bool _greek = true;
   dynamic _roleRequestChannel;
   dynamic _billingNoticeChannel;
+  dynamic _userNotificationChannel;
   late final VoidCallback _languageListener;
   late Future<List<Map<String, dynamic>>> _billingNotices;
+  late Future<List<Map<String, dynamic>>> _userNotifications;
 
   @override
   void initState() {
@@ -34,6 +39,9 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
     };
     language.selected.addListener(_languageListener);
     _billingNotices = _loadBillingNotices();
+    _userNotifications = _loadUserNotifications();
+    _refreshDueNotifications();
+    _subscribeUserNotifications();
     _subscribeAdminNotifications();
     _subscribeBillingNotifications();
   }
@@ -49,7 +57,104 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
     if (_billingNoticeChannel != null) {
       _client.removeChannel(_billingNoticeChannel);
     }
+    if (_userNotificationChannel != null) {
+      _client.removeChannel(_userNotificationChannel);
+    }
     super.dispose();
+  }
+
+  Future<void> _refreshDueNotifications() async {
+    try {
+      await _client.rpc('refresh_property_due_notifications');
+      if (mounted) setState(() => _userNotifications = _loadUserNotifications());
+    } catch (_) {}
+  }
+
+  Future<List<Map<String, dynamic>>> _loadUserNotifications() async {
+    try {
+      final userId = _client.auth.currentUser?.id;
+      if (userId == null) return [];
+      return List<Map<String, dynamic>>.from(await _client
+          .from('user_notifications')
+          .select('id,property_id,notification_type,title_el,title_en,message_el,message_en,is_read,created_at,related_type,related_id')
+          .eq('user_id', userId)
+          .order('created_at', ascending: false)
+          .limit(40));
+    } catch (_) {
+      return [];
+    }
+  }
+
+  void _subscribeUserNotifications() {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return;
+    _userNotificationChannel = _client
+        .channel('smartblock-user-notifications-$userId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'user_notifications',
+          filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'user_id', value: userId),
+          callback: (_) {
+            if (!mounted) return;
+            setState(() => _userNotifications = _loadUserNotifications());
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(_greek ? 'Έχεις νέα ειδοποίηση SmartBlock.' : 'You have a new SmartBlock notification.'),
+              action: SnackBarAction(label: _greek ? 'Προβολή' : 'View', onPressed: _openNotificationInbox),
+            ));
+          },
+        )
+        .subscribe();
+  }
+
+  Future<void> _markNotificationRead(String id) async {
+    await _client.from('user_notifications').update({'is_read': true}).eq('id', id);
+    if (mounted) setState(() => _userNotifications = _loadUserNotifications());
+  }
+
+  Future<void> _openNotificationInbox() async {
+    final notifications = await _userNotifications;
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(sheetContext).height * .75,
+          child: Column(children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              child: Row(children: [
+                const Icon(Icons.notifications_active_outlined),
+                const SizedBox(width: 10),
+                Text(_greek ? 'Ειδοποιήσεις' : 'Notifications', style: Theme.of(sheetContext).textTheme.titleLarge),
+              ]),
+            ),
+            Expanded(child: notifications.isEmpty
+                ? Center(child: Text(_greek ? 'Δεν υπάρχουν ειδοποιήσεις.' : 'No notifications yet.'))
+                : ListView.builder(
+                    itemCount: notifications.length,
+                    itemBuilder: (context, index) {
+                      final item = notifications[index];
+                      final greek = _greek;
+                      final createdAt = item['created_at'] as String? ?? '';
+                      final timestamp = createdAt.length > 16
+                          ? createdAt.substring(0, 16).replaceFirst('T', ' ')
+                          : createdAt.replaceFirst('T', ' ');
+                      return ListTile(
+                        leading: Icon(item['is_read'] == true ? Icons.notifications_none : Icons.notifications_active, color: item['is_read'] == true ? null : Theme.of(context).colorScheme.primary),
+                        title: Text((greek ? item['title_el'] : item['title_en']) as String? ?? ''),
+                        subtitle: Text((greek ? item['message_el'] : item['message_en']) as String? ?? ''),
+                        trailing: Text(timestamp),
+                        onTap: item['is_read'] == true ? null : () => _markNotificationRead(item['id'] as String),
+                      );
+                    },
+                  )),
+          ]),
+        ),
+      ),
+    );
   }
 
   Future<List<Map<String, dynamic>>> _loadBillingNotices() async {
@@ -102,6 +207,37 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
           .eq('id', id);
       if (mounted) setState(() => _billingNotices = _loadBillingNotices());
     } catch (_) {}
+  }
+
+  Future<void> _enableBiometrics() async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null || kIsWeb) return;
+    try {
+      final auth = LocalAuthentication();
+      if ((await auth.getAvailableBiometrics()).isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+          _greek ? 'Δεν βρέθηκε ενεργό Face ID ή δακτυλικό αποτύπωμα στη συσκευή.' : 'No enrolled Face ID or fingerprint was found on this device.',
+        )));
+        return;
+      }
+      final success = await auth.authenticate(
+        localizedReason: _greek ? 'Επιβεβαίωσε για να ενεργοποιήσεις το βιομετρικό ξεκλείδωμα SmartBlock.' : 'Authenticate to enable SmartBlock biometric unlock.',
+        biometricOnly: true,
+        persistAcrossBackgrounding: true,
+      );
+      if (!success) return;
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setBool('smartblock_biometric_$userId', true);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        _greek ? 'Το βιομετρικό ξεκλείδωμα ενεργοποιήθηκε σε αυτή τη συσκευή.' : 'Biometric unlock is enabled on this device.',
+      )));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        _greek ? 'Δεν ήταν δυνατή η ενεργοποίηση. Έλεγξε τις ρυθμίσεις βιομετρικών της συσκευής.' : 'Could not enable biometrics. Check this device’s biometric settings.',
+      )));
+    }
   }
 
   Future<void> _subscribeAdminNotifications() async {
@@ -299,6 +435,23 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
       title: const Text('SmartBlock'),
       actions: [
         const SmartBlockLanguageMenu(),
+        FutureBuilder<List<Map<String, dynamic>>>(
+          future: _userNotifications,
+          builder: (context, snapshot) {
+            final unread = (snapshot.data ?? const []).where((item) => item['is_read'] != true).length;
+            return IconButton(
+              tooltip: _greek ? 'Ειδοποιήσεις' : 'Notifications',
+              onPressed: _openNotificationInbox,
+              icon: Badge(isLabelVisible: unread > 0, label: Text(unread > 9 ? '9+' : '$unread'), child: const Icon(Icons.notifications_outlined)),
+            );
+          },
+        ),
+        if (!kIsWeb)
+          IconButton(
+            tooltip: _greek ? 'Ενεργοποίηση Face ID / δακτυλικού' : 'Enable Face ID / fingerprint',
+            onPressed: _enableBiometrics,
+            icon: const Icon(Icons.fingerprint),
+          ),
         IconButton(
           tooltip: _greek ? 'Αποσύνδεση' : 'Sign out',
           onPressed: () => _client.auth.signOut(),

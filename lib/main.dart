@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
+import 'package:local_auth/local_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app_language.dart';
@@ -173,11 +175,102 @@ class AuthGate extends StatelessWidget {
         final session = Supabase.instance.client.auth.currentSession;
 
         if (session != null) {
-          return const SmartBlockDashboard();
+          return _BiometricGate(
+            userId: session.user.id,
+            child: const SmartBlockDashboard(),
+          );
         }
 
         return const LoginScreen();
       },
+    );
+  }
+}
+
+class _BiometricGate extends StatefulWidget {
+  const _BiometricGate({required this.userId, required this.child});
+  final String userId;
+  final Widget child;
+
+  @override
+  State<_BiometricGate> createState() => _BiometricGateState();
+}
+
+class _BiometricGateState extends State<_BiometricGate> {
+  final _auth = LocalAuthentication();
+  bool _loading = true;
+  bool _locked = false;
+  bool _busy = false;
+
+  String get _preferenceKey => 'smartblock_biometric_${widget.userId}';
+
+  @override
+  void initState() {
+    super.initState();
+    _initialize();
+  }
+
+  Future<void> _initialize() async {
+    if (kIsWeb) {
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
+    final preferences = await SharedPreferences.getInstance();
+    final enabled = preferences.getBool(_preferenceKey) ?? false;
+    if (!mounted) return;
+    setState(() {
+      _locked = enabled;
+      _loading = false;
+    });
+    if (enabled) await _unlock();
+  }
+
+  Future<void> _unlock() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final available = await _auth.getAvailableBiometrics();
+      final authenticated = available.isNotEmpty && await _auth.authenticate(
+        localizedReason: 'Unlock your SmartBlock account',
+        biometricOnly: true,
+        persistAcrossBackgrounding: true,
+      );
+      if (mounted && authenticated) setState(() => _locked = false);
+    } catch (_) {
+      // The account stays protected and the user can retry or sign out.
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (!_locked) return widget.child;
+    return Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.fingerprint, size: 64, color: Color(0xFF245B73)),
+            const SizedBox(height: 16),
+            const Text('Unlock SmartBlock with biometrics'),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: _busy ? null : _unlock,
+              icon: const Icon(Icons.face),
+              label: Text(_busy ? 'Waiting for device…' : 'Use Face ID / fingerprint'),
+            ),
+            TextButton(
+              onPressed: () async {
+                await SharedPreferences.getInstance().then((p) => p.remove(_preferenceKey));
+                await Supabase.instance.client.auth.signOut();
+              },
+              child: const Text('Sign out and use password'),
+            ),
+          ]),
+        ),
+      ),
     );
   }
 }
@@ -894,3 +987,4 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
+

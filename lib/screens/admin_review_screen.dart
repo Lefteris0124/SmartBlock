@@ -16,7 +16,7 @@ class AdminReviewScreen extends StatefulWidget {
 class _AdminReviewScreenState extends State<AdminReviewScreen>
     with SingleTickerProviderStateMixin {
   final db = Supabase.instance.client;
-  late final tabs = TabController(length: 6, vsync: this);
+  late final tabs = TabController(length: 7, vsync: this);
   bool isAdmin = false;
   String _propertyQuery = '';
   String _organizationQuery = '';
@@ -79,6 +79,77 @@ class _AdminReviewScreenState extends State<AdminReviewScreen>
       List<Map<String, dynamic>>.from(
         await db.rpc('admin_list_account_role_requests'),
       );
+
+  Future<List<Map<String, dynamic>>> loadAccounts() async =>
+      List<Map<String, dynamic>>.from(await db.rpc('admin_list_user_accounts'));
+
+  Future<void> editAccount(Map<String, dynamic> account) async {
+    final name = TextEditingController(text: account['full_name'] as String? ?? '');
+    final phone = TextEditingController(text: account['phone'] as String? ?? '');
+    final roles = Set<String>.from((account['requested_roles'] as List?) ?? const []);
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialog) => AlertDialog(
+          title: Text(gr ? 'Επεξεργασία λογαριασμού' : 'Edit account'),
+          content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text(account['email'] as String? ?? ''),
+            const SizedBox(height: 12),
+            TextField(controller: name, decoration: InputDecoration(labelText: gr ? 'Ονοματεπώνυμο' : 'Full name')),
+            const SizedBox(height: 8),
+            TextField(controller: phone, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: gr ? 'Τηλέφωνο' : 'Phone')),
+            const SizedBox(height: 12),
+            CheckboxListTile(value: roles.contains('property_owner'),title: Text(gr ? 'Ιδιοκτήτης' : 'Property owner'),onChanged: (v) => setDialog(() { if (v == true) { roles.add('property_owner'); } else { roles.remove('property_owner'); } })),
+            CheckboxListTile(value: roles.contains('tenant'),title: Text(gr ? 'Ενοικιαστής' : 'Tenant'),onChanged: (v) => setDialog(() { if (v == true) { roles.add('tenant'); } else { roles.remove('tenant'); } })),
+          ])),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(gr ? 'Άκυρο' : 'Cancel')),
+            FilledButton(onPressed: roles.isEmpty || name.text.trim().isEmpty ? null : () => Navigator.pop(dialogContext, true), child: Text(gr ? 'Αποθήκευση' : 'Save')),
+          ],
+        ),
+      ),
+    );
+    if (result == true) {
+      try {
+        await db.rpc('admin_update_user_account', params: {
+          'p_user_id': account['user_id'],
+          'p_full_name': name.text.trim(),
+          'p_phone': phone.text.trim(),
+          'p_roles': roles.toList(),
+        });
+        if (mounted) setState(() {});
+      } on PostgrestException catch (error) {
+        notify(error.message);
+      }
+    }
+    name.dispose();
+    phone.dispose();
+  }
+
+  Widget accountDirectory() => FutureBuilder<List<Map<String, dynamic>>>(
+    future: loadAccounts(),
+    builder: (context, snapshot) {
+      if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+      if (snapshot.hasError) return loadError(snapshot.error);
+      final accounts = snapshot.data ?? const [];
+      return RefreshIndicator(onRefresh: () async => setState(() {}), child: ListView(
+        padding: const EdgeInsets.all(12),
+        children: [
+          Padding(padding: const EdgeInsets.all(8), child: Text(gr ? 'Επεξεργασία στοιχείων και ρόλων λογαριασμών' : 'Edit account details and roles')),
+          ...accounts.map((account) {
+            final roles = ((account['requested_roles'] as List?) ?? const []).map((role) => role == 'property_owner' ? (gr ? 'Ιδιοκτήτης' : 'Owner') : (gr ? 'Ενοικιαστής' : 'Tenant')).join(' · ');
+            return Card(child: ListTile(
+              leading: const CircleAvatar(child: Icon(Icons.person_outline)),
+              title: Text((account['full_name'] as String?)?.isNotEmpty == true ? account['full_name'] as String : account['email'] as String? ?? ''),
+              subtitle: Text('${account['email'] ?? ''} · ${account['phone'] ?? ''}\n$roles · ${statusLabel(account['role_status'] as String?)}'),
+              isThreeLine: true,
+              trailing: isAdmin ? IconButton(tooltip: gr ? 'Επεξεργασία' : 'Edit', onPressed: () => editAccount(account), icon: const Icon(Icons.edit_outlined)) : null,
+            ));
+          }),
+        ],
+      ));
+    },
+  );
 
   Future<List<Map<String, dynamic>>> loadManagerRequests() async =>
       List<Map<String, dynamic>>.from(await db.rpc('admin_list_property_manager_requests'));
@@ -691,6 +762,7 @@ class _AdminReviewScreenState extends State<AdminReviewScreen>
         Tab(icon:const Icon(Icons.business_outlined),text:gr?'Οργανισμοί':'Organizations'),
         Tab(icon:const Icon(Icons.group_outlined),text:gr?'Προσβάσεις':'Access'),
         Tab(icon:const Icon(Icons.verified_user_outlined),text:gr?'Διαχειριστές':'Managers'),
+        Tab(icon:const Icon(Icons.manage_accounts_outlined),text:gr?'Λογαριασμοί':'Accounts'),
       ]),
     ),
     floatingActionButton:AnimatedBuilder(animation:tabs,builder:(context,_)=>!isAdmin?const SizedBox.shrink():switch(tabs.index){
@@ -708,9 +780,11 @@ class _AdminReviewScreenState extends State<AdminReviewScreen>
       organizationDirectory(),
       membershipDirectory(),
       managerRequests(),
+      accountDirectory(),
     ]),
   );
 }
+
 
 
 
