@@ -755,7 +755,7 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
             onPressed: _enableBiometrics,
             icon: const Icon(Icons.fingerprint),
           ),
-        if (SmartBlockTrialSession.isActive)
+        if (SmartBlockTrialSession.shouldShowReturnControls)
           IconButton(
             tooltip: _greek ? 'Επιστροφή στον admin' : 'Return to admin',
             onPressed: _leaveTrial,
@@ -819,7 +819,7 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
         return ListView(
           padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
           children: [
-            if (SmartBlockTrialSession.isActive)
+            if (SmartBlockTrialSession.shouldShowReturnControls)
               Card(
                 color: Theme.of(context).colorScheme.tertiaryContainer,
                 child: ListTile(
