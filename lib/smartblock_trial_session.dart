@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Holds a separate in-memory Supabase session for the admin's test account.
@@ -7,6 +8,7 @@ class SmartBlockTrialSession {
 
   static SupabaseClient? _client;
   static String? _role;
+  static final ValueNotifier<bool> activeListenable = ValueNotifier<bool>(false);
 
   static SupabaseClient get client => _client ?? Supabase.instance.client;
   static bool get isActive => _client != null;
@@ -19,12 +21,15 @@ class SmartBlockTrialSession {
     await _client?.auth.signOut();
     _client = client;
     _role = role;
+    activeListenable.value = true;
   }
 
   static Future<void> stop() async {
     final client = _client;
     _client = null;
     _role = null;
+    activeListenable.value = false;
     await client?.auth.signOut();
   }
 }
+
