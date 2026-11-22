@@ -40,6 +40,20 @@ class _RolePreviewScreenState extends State<RolePreviewScreen> {
 
   Future<void> _startTrial() async {
     if (_starting) return;
+    if (SmartBlockTrialSession.isActive) {
+      await Navigator.of(context).pushAndRemoveUntil<void>(
+        MaterialPageRoute<void>(builder: (_) => const SmartBlockDashboard()),
+        (route) => false,
+      );
+      return;
+    }
+    final currentUser = Supabase.instance.client.auth.currentUser;
+    if (currentUser?.appMetadata['smartblock_trial'] == true) {
+      await Supabase.instance.client.auth.signOut();
+      if (!mounted) return;
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      return;
+    }
     setState(() => _starting = true);
     final adminSession = Supabase.instance.client.auth.currentSession;
     SupabaseClient? trialClient;
