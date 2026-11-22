@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app_language.dart';
 import 'screens/smartblock_dashboard.dart';
+import 'screens/lease_contract_offer_screen.dart';
 import 'smartblock_trial_session.dart';
 import 'smartblock_text.dart';
 
@@ -247,6 +248,7 @@ class AuthGate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final inviteToken = Uri.base.queryParameters['lease_invite'];
     return StreamBuilder(
       stream: Supabase.instance.client.auth.onAuthStateChange,
       builder: (context, snapshot) {
@@ -259,11 +261,13 @@ class AuthGate extends StatelessWidget {
         if (session != null) {
           return _BiometricGate(
             userId: session.user.id,
-            child: const SmartBlockDashboard(),
+            child: inviteToken != null && inviteToken.isNotEmpty
+                ? LeaseContractOfferScreen(token: inviteToken)
+                : const SmartBlockDashboard(),
           );
         }
 
-        return const LoginScreen();
+        return LoginScreen(leaseInviteToken: inviteToken);
       },
     );
   }
@@ -522,7 +526,8 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
 }
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  const LoginScreen({this.leaseInviteToken, super.key});
+  final String? leaseInviteToken;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -538,15 +543,21 @@ class _LoginScreenState extends State<LoginScreen> {
   bool isBusy = false;
   final Set<String> requestedRoles = {};
   late final VoidCallback _languageListener;
-  String get _authRedirectUrl => kIsWeb
-      ? Uri.base.origin + Uri.base.path
-      : 'io.supabase.smartblock://login-callback';
+  String get _authRedirectUrl {
+    if (!kIsWeb) return 'io.supabase.smartblock://login-callback';
+    final token = widget.leaseInviteToken;
+    if (token == null || token.isEmpty) return Uri.base.origin + Uri.base.path;
+    return Uri.base.replace(
+      queryParameters: {...Uri.base.queryParameters, 'lease_invite': token},
+    ).toString();
+  }
 
   @override
   void initState() {
     super.initState();
     final language = SmartBlockLanguageController.instance;
     isGreek = language.selected.value.isGreek;
+    if (widget.leaseInviteToken != null) requestedRoles.add('tenant');
     _languageListener = () {
       if (mounted) setState(() => isGreek = language.selected.value.isGreek);
     };
@@ -606,7 +617,7 @@ class _LoginScreenState extends State<LoginScreen> {
           password: password,
           emailRedirectTo: _authRedirectUrl,
           data: {
-            'requested_roles': requestedRoles.toList(),
+            'requested_roles': {...requestedRoles, if (widget.leaseInviteToken != null) 'tenant'}.toList(),
             'preferred_language':
                 SmartBlockLanguageController.instance.selected.value.code,
           },
@@ -830,6 +841,19 @@ class _LoginScreenState extends State<LoginScreen> {
                       letterSpacing: -1,
                     ),
                   ),
+                  if (widget.leaseInviteToken != null) ...[
+                    const SizedBox(height: 14),
+                    Card(
+                      color: Theme.of(context).colorScheme.secondaryContainer,
+                      child: ListTile(
+                        leading: const Icon(Icons.description_outlined),
+                        title: Text(isGreek ? 'Έχεις πρόσκληση μίσθωσης' : 'You have a rental invitation'),
+                        subtitle: Text(isGreek
+                            ? 'Συνδέσου ή δημιούργησε λογαριασμό με το email στο οποίο στάλθηκε ο σύνδεσμος.'
+                            : 'Sign in or create an account using the email that received the link.'),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 8),
                   Text(
                     title,
