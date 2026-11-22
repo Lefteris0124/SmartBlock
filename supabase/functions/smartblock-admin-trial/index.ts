@@ -17,7 +17,10 @@ Deno.serve(async (request: Request) => {
   if (request.method !== "POST") return json({ error: "Method not allowed." }, 405);
 
   const url = Deno.env.get("SUPABASE_URL");
-  const publishableKey = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY");
+  const publishableKeyMap = JSON.parse(Deno.env.get("SUPABASE_PUBLISHABLE_KEYS") ?? "{}") as Record<string, string>;
+  const publishableKey = Deno.env.get("SUPABASE_ANON_KEY")
+    ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY")
+    ?? publishableKeyMap.default;
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!url || !publishableKey || !serviceRoleKey) {
     return json({ error: "Trial service is not configured." }, 503);
@@ -181,4 +184,4 @@ async function ensureOtherTrialAccount(client: ReturnType<typeof createClient>, 
   });
   return createError ? null : created.user?.id ?? null;
 }
-\n
+
