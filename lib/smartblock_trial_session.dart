@@ -32,10 +32,13 @@ class SmartBlockTrialSession {
     final adminSession = _adminSession;
     try {
       if (adminSession != null) {
-        await Supabase.instance.client.auth.setSession(
-          adminSession.refreshToken,
-          accessToken: adminSession.accessToken,
-        );
+        final refreshToken = adminSession.refreshToken;
+        if (refreshToken != null && refreshToken.isNotEmpty) {
+          await Supabase.instance.client.auth.setSession(
+            refreshToken,
+            accessToken: adminSession.accessToken,
+          );
+        }
       }
     } finally {
       _client = null;
@@ -52,10 +55,13 @@ class SmartBlockTrialSession {
   }) async {
     try {
       if (adminSession != null) {
-        await Supabase.instance.client.auth.setSession(
-          adminSession.refreshToken,
-          accessToken: adminSession.accessToken,
-        );
+        final refreshToken = adminSession.refreshToken;
+        if (refreshToken != null && refreshToken.isNotEmpty) {
+          await Supabase.instance.client.auth.setSession(
+            refreshToken,
+            accessToken: adminSession.accessToken,
+          );
+        }
       }
     } finally {
       await trialClient?.dispose();
