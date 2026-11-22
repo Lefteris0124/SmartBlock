@@ -62,3 +62,7 @@ In Stripe sandbox, enable card payments and Apple Pay / Google Pay under payment
 
 Never put the Stripe secret or webhook signing secret in Flutter code, a GitHub repository variable, or a committed file. Store them only as Supabase Edge Function secrets. A live key is intentionally blocked until the live-payment mode is explicitly enabled in a later change.
 
+
+## Admin trial mode
+
+The admin role preview uses a separate Supabase client so trial sign-in does not overwrite the administrator session. Use **Return to Admin** to end trial mode; navigation returns to the root screen. A stale role-preview route detects an active or authenticated trial and will not issue another admin-trial request. If a previous browser session was left in trial mode, sign out once and sign back in with the administrator account.
