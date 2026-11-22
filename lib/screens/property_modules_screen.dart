@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart' hide Text;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import '../smartblock_text.dart';
 
 class PropertyModulesScreen extends StatefulWidget {
@@ -996,6 +997,297 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     }
   }
 
+  Future<void> _startLeaseRenewal(Map<String, dynamic> contract) async {
+    final ownerEmail = TextEditingController();
+    final tenantEmail = TextEditingController();
+    final rent = TextEditingController(text: '${contract['monthly_rent']}');
+    final deposit = TextEditingController(text: '0');
+    final commonCharges = TextEditingController(text: '0');
+    final start = TextEditingController();
+    final end = TextEditingController();
+    final dueDay = TextEditingController(text: '1');
+    final furniture = TextEditingController();
+    final services = TextEditingController();
+    final specialTerms = TextEditingController();
+    final key = GlobalKey<FormState>();
+    final previousEnd = DateTime.tryParse(
+      contract['end_date']?.toString() ?? '',
+    );
+    final firstDay = (previousEnd ?? DateTime.now()).add(
+      const Duration(days: 1),
+    );
+    final lastDay = DateTime(firstDay.year + 1, firstDay.month, firstDay.day);
+    String iso(DateTime d) =>
+        '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    start.text = iso(firstDay);
+    end.text = iso(lastDay);
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          gr ? 'Πρόταση ανανέωσης μίσθωσης' : 'Prepare lease renewal',
+        ),
+        content: SizedBox(
+          width: 560,
+          child: Form(
+            key: key,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    gr
+                        ? 'Οι όροι συμπληρώνονται για αυτήν τη συγκεκριμένη μίσθωση. Το επισυναπτόμενο συμφωνητικό είναι δείγμα· οι παλιοί όροι ανανέωσης δεν αντιγράφονται αυτόματα.'
+                        : 'Terms are completed for this specific rental. The attached agreement is a sample; its previous renewal clauses are not copied automatically.',
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: ownerEmail,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: InputDecoration(
+                      labelText: gr
+                          ? 'Email εγγεγραμμένου ιδιοκτήτη'
+                          : 'Registered owner email',
+                    ),
+                    validator: required,
+                  ),
+                  TextFormField(
+                    controller: tenantEmail,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: InputDecoration(
+                      labelText: gr
+                          ? 'Email εγγεγραμμένου ενοικιαστή'
+                          : 'Registered tenant email',
+                    ),
+                    validator: required,
+                  ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: rent,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: InputDecoration(
+                            labelText: gr
+                                ? 'Νέο μηνιαίο ενοίκιο (€)'
+                                : 'New monthly rent (€)',
+                          ),
+                          validator: _positiveAmount,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextFormField(
+                          controller: deposit,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: InputDecoration(
+                            labelText: gr ? 'Εγγύηση (€)' : 'Deposit (€)',
+                          ),
+                          validator: _nonNegativeAmount,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: start,
+                          decoration: InputDecoration(
+                            labelText: gr
+                                ? 'Έναρξη YYYY-MM-DD'
+                                : 'Start YYYY-MM-DD',
+                          ),
+                          validator: rentDateError,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextFormField(
+                          controller: end,
+                          decoration: InputDecoration(
+                            labelText: gr
+                                ? 'Λήξη YYYY-MM-DD'
+                                : 'End YYYY-MM-DD',
+                          ),
+                          validator: (v) {
+                            final error = rentDateError(v);
+                            if (error != null) return error;
+                            if (start.text.trim().isNotEmpty &&
+                                v!.trim().compareTo(start.text.trim()) <= 0)
+                              return gr
+                                  ? 'Η λήξη πρέπει να είναι μετά την έναρξη.'
+                                  : 'End date must be after start date.';
+                            return null;
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: dueDay,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            labelText: gr
+                                ? 'Ημέρα πληρωμής (1–28)'
+                                : 'Rent due day (1–28)',
+                          ),
+                          validator: (v) {
+                            final n = int.tryParse(v ?? '');
+                            return n == null || n < 1 || n > 28
+                                ? (gr
+                                      ? 'Βάλε ημέρα από 1 έως 28.'
+                                      : 'Enter a day from 1 to 28.')
+                                : null;
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextFormField(
+                          controller: commonCharges,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: InputDecoration(
+                            labelText: gr
+                                ? 'Κοινόχρηστα/μήνα (€)'
+                                : 'Common charges/month (€)',
+                          ),
+                          validator: _nonNegativeAmount,
+                        ),
+                      ),
+                    ],
+                  ),
+                  TextFormField(
+                    controller: furniture,
+                    maxLines: 3,
+                    decoration: InputDecoration(
+                      labelText: gr
+                          ? 'Έπιπλα και απογραφή εξοπλισμού'
+                          : 'Furniture and inventory',
+                      hintText: gr
+                          ? 'Καταγραφή για αυτήν τη μίσθωση'
+                          : 'Inventory for this specific lease',
+                    ),
+                  ),
+                  TextFormField(
+                    controller: services,
+                    maxLines: 2,
+                    decoration: InputDecoration(
+                      labelText: gr
+                          ? 'Παροχές και τι περιλαμβάνει'
+                          : 'Included services and utilities',
+                    ),
+                  ),
+                  TextFormField(
+                    controller: specialTerms,
+                    maxLines: 3,
+                    decoration: InputDecoration(
+                      labelText: gr
+                          ? 'Ειδικοί όροι που συμφωνήθηκαν'
+                          : 'Agreed special terms',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    gr
+                        ? 'Ο ιδιοκτήτης συνδέεται με εγκεκριμένο λογαριασμό του ακινήτου και ο ενοικιαστής με εγκεκριμένο λογαριασμό που ταιριάζει στο τηλέφωνο της μίσθωσης. Τα στοιχεία ταυτότητας τα συμπληρώνει ο καθένας μόνος του από τον δικό του λογαριασμό.'
+                        : 'The owner is matched to an approved account linked to the property and the tenant to an approved account with the rental phone. Each party enters their own ID details from their own account.',
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(gr ? 'Άκυρο' : 'Cancel'),
+          ),
+          FilledButton.icon(
+            onPressed: () =>
+                key.currentState!.validate() ? Navigator.pop(ctx, true) : null,
+            icon: const Icon(Icons.send_outlined),
+            label: Text(gr ? 'Αποστολή για αποδοχή' : 'Send for review'),
+          ),
+        ],
+      ),
+    );
+    if (saved != true) return;
+    try {
+      await db.rpc(
+        'create_lease_renewal',
+        params: {
+          'p_contract_id': contract['id'],
+          'p_owner_email': ownerEmail.text.trim(),
+          'p_tenant_email': tenantEmail.text.trim(),
+          'p_owner_id_type': 'pending',
+          'p_owner_id_number': 'pending',
+          'p_tenant_id_type': 'pending',
+          'p_tenant_id_number': 'pending',
+          'p_monthly_rent': double.parse(rent.text.replaceAll(',', '.')),
+          'p_deposit_amount': double.parse(deposit.text.replaceAll(',', '.')),
+          'p_start_date': start.text.trim(),
+          'p_end_date': end.text.trim(),
+          'p_rent_due_day': int.parse(dueDay.text.trim()),
+          'p_common_charges': double.parse(
+            commonCharges.text.replaceAll(',', '.'),
+          ),
+          'p_furniture_and_inventory': furniture.text.trim(),
+          'p_included_services': services.text.trim(),
+          'p_special_terms': specialTerms.text.trim(),
+        },
+      );
+      if (mounted)
+        message(
+          gr
+              ? 'Η πρόταση δημιουργήθηκε. Οι δύο συμβαλλόμενοι θα τη βρουν στις «Ανανεώσεις μισθώσεων».'
+              : 'Renewal prepared. Both parties can review it under “Lease renewals”.',
+        );
+      await refresh();
+    } on PostgrestException catch (e) {
+      if (mounted) message(e.message);
+    } finally {
+      for (final c in [
+        ownerEmail,
+        tenantEmail,
+        rent,
+        deposit,
+        commonCharges,
+        start,
+        end,
+        dueDay,
+        furniture,
+        services,
+        specialTerms,
+      ]) {
+        c.dispose();
+      }
+    }
+  }
+
+  String? _positiveAmount(String? value) {
+    final n = double.tryParse((value ?? '').trim().replaceAll(',', '.'));
+    return n == null || n <= 0
+        ? (gr ? 'Βάλε ποσό μεγαλύτερο από 0.' : 'Enter an amount above 0.')
+        : null;
+  }
+
+  String? _nonNegativeAmount(String? value) {
+    final n = double.tryParse((value ?? '').trim().replaceAll(',', '.'));
+    return n == null || n < 0
+        ? (gr ? 'Βάλε ποσό 0 ή μεγαλύτερο.' : 'Enter 0 or a positive amount.')
+        : null;
+  }
+
   Future<void> createNote() async {
     final controller = TextEditingController();
     final key = GlobalKey<FormState>();
@@ -1451,7 +1743,9 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     try {
       final records = await db
           .from('property_payment_records')
-          .select('amount,payment_method,reference,notes,paid_at,platform_fee_percent,platform_fee_amount,net_to_property_amount')
+          .select(
+            'amount,payment_method,reference,notes,paid_at,platform_fee_percent,platform_fee_amount,net_to_property_amount',
+          )
           .eq(rent ? 'rent_installment_id' : 'charge_entry_id', targetId)
           .order('paid_at', ascending: false);
       if (!mounted) return;
@@ -1484,7 +1778,10 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
                                   '${gr ? 'Αναφορά' : 'Ref'}: ${row['reference']}',
                                 if ((row['notes'] ?? '').toString().isNotEmpty)
                                   row['notes'],
-                                if (((row['platform_fee_amount'] as num?)?.toDouble() ?? 0) > 0)
+                                if (((row['platform_fee_amount'] as num?)
+                                            ?.toDouble() ??
+                                        0) >
+                                    0)
                                   '${gr ? 'Παρακράτηση SmartBlock' : 'SmartBlock fee'}: ${((row['platform_fee_amount'] as num).toDouble()).toStringAsFixed(2)} € (${row['platform_fee_percent']}%)',
                                 if (row['net_to_property_amount'] != null)
                                   '${gr ? 'Καθαρό ποσό ακινήτου' : 'Net to property'}: ${((row['net_to_property_amount'] as num).toDouble()).toStringAsFixed(2)} €',
@@ -1893,8 +2190,20 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
                     }}',
                   ),
                   onTap: () => openRent(contract),
-                  trailing: isAdmin
-                      ? PopupMenuButton<String>(
+                  trailing: Wrap(
+                    spacing: 2,
+                    children: [
+                      if (contract['status'] == 'active' ||
+                          contract['status'] == 'ended')
+                        IconButton(
+                          tooltip: gr
+                              ? 'Προετοιμασία ανανέωσης'
+                              : 'Prepare renewal',
+                          icon: const Icon(Icons.edit_document),
+                          onPressed: () => _startLeaseRenewal(contract),
+                        ),
+                      if (isAdmin)
+                        PopupMenuButton<String>(
                           onSelected: (action) {
                             if (action == 'edit') _editRent(contract);
                             if (action == 'delete')
@@ -1914,8 +2223,9 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
                               child: Text(gr ? 'Διαγραφή' : 'Delete'),
                             ),
                           ],
-                        )
-                      : null,
+                        ),
+                    ],
+                  ),
                 ),
               ),
             )
@@ -1977,3 +2287,4 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     ),
   );
 }
+

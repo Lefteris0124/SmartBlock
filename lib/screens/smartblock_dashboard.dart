@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'admin_review_screen.dart';
 import 'admin_billing_screen.dart';
 import 'properties_screen.dart';
+import 'lease_renewals_screen.dart';
 import 'support_chat_screen.dart';
 import 'role_preview_screen.dart';
 import '../app_language.dart';
@@ -647,6 +648,16 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
               ),
             const SizedBox(height: 8),
             _RoleCard(
+              icon: Icons.edit_document,
+              title: _greek ? 'Ανανεώσεις μισθώσεων' : 'Lease renewals',
+              detail: _greek
+                  ? 'Δες και αποδέξου ηλεκτρονικά τις ανανεώσεις που αφορούν τον λογαριασμό σου.'
+                  : 'Review and electronically accept renewals linked to your account.',
+              onTap: () => _open(
+                LeaseRenewalsScreen(isGreek: _greek, isStaff: access.isStaff),
+              ),
+            ),
+            _RoleCard(
               icon: Icons.support_agent_outlined,
               title: access.isStaff
                   ? (_greek ? 'Υποστήριξη χρηστών' : 'Support inbox')
@@ -842,4 +853,5 @@ class _RoleCard extends StatelessWidget {
     );
   }
 }
+
 
