@@ -13,6 +13,10 @@ class SmartBlockTrialSession {
 
   static SupabaseClient get client => _client ?? Supabase.instance.client;
   static bool get isActive => _client != null;
+  static bool get shouldShowReturnControls =>
+      isActive ||
+      Supabase.instance.client.auth.currentUser?.appMetadata['smartblock_trial'] ==
+          true;
   static String? get role => _role;
 
   static Future<void> start({
@@ -39,6 +43,10 @@ class SmartBlockTrialSession {
             accessToken: adminSession.accessToken,
           );
         }
+      } else if (
+          Supabase.instance.client.auth.currentUser?.appMetadata['smartblock_trial'] ==
+              true) {
+        await Supabase.instance.client.auth.signOut();
       }
     } finally {
       _client = null;
