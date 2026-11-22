@@ -130,6 +130,7 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
     final city = TextEditingController();
     final other = TextEditingController();
     final apartments = TextEditingController();
+    final virtualUnitAddresses = <TextEditingController>[];
     final form = GlobalKey<FormState>();
     var type = 'apartment';
     var buildingModel = 'physical';
@@ -203,7 +204,18 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
                             ? null
                             : (value) {
                                 if (value != null) {
-                                  setDialog(() => buildingModel = value);
+                                  setDialog(() {
+                                    buildingModel = value;
+                                    final count = value == 'virtual'
+                                        ? int.tryParse(apartments.text.trim()) ?? 0
+                                        : 0;
+                                    while (virtualUnitAddresses.length < count) {
+                                      virtualUnitAddresses.add(TextEditingController());
+                                    }
+                                    while (virtualUnitAddresses.length > count) {
+                                      virtualUnitAddresses.removeLast().dispose();
+                                    }
+                                  });
                                 }
                               },
                       ),
@@ -223,7 +235,39 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
                                   ? 'Βάλε τον αριθμό διαμερισμάτων.'
                                   : 'Enter the apartment count.')
                             : null,
+                        onChanged: (v) {
+                          if (buildingModel != 'virtual') return;
+                          final count = int.tryParse(v.trim()) ?? 0;
+                          if (count < 0 || count > 200) return;
+                          setDialog(() {
+                            while (virtualUnitAddresses.length < count) {
+                              virtualUnitAddresses.add(TextEditingController());
+                            }
+                            while (virtualUnitAddresses.length > count) {
+                              virtualUnitAddresses.removeLast().dispose();
+                            }
+                          });
+                        },
                       ),
+                      if (buildingModel == 'virtual') ...[
+                        const SizedBox(height: 10),
+                        Text(_greek
+                            ? 'Διεύθυνση για κάθε εικονικό διαμέρισμα (για επαλήθευση)'
+                            : 'Address for each virtual apartment (for verification)'),
+                        ...List.generate(virtualUnitAddresses.length, (index) => Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: TextFormField(
+                            controller: virtualUnitAddresses[index],
+                            decoration: InputDecoration(
+                              labelText: _greek ? 'Διαμέρισμα ${index + 1} — διεύθυνση' : 'Unit ${index + 1} — address',
+                            ),
+                            validator: (value) => buildingModel == 'virtual' &&
+                                    (value == null || value.trim().isEmpty)
+                                ? (_greek ? 'Συμπλήρωσε τη διεύθυνση.' : 'Enter this address.')
+                                : null,
+                          ),
+                        )),
+                      ],
                     ],
                     if (type == 'other') ...[
                       const SizedBox(height: 12),
@@ -354,6 +398,17 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
                                 : 'physical',
                           },
                         );
+                        if (id != null && buildingModel == 'virtual') {
+                          await _client.from('property_virtual_units').insert(
+                            List.generate(virtualUnitAddresses.length, (index) => {
+                              'property_id': id,
+                              'unit_label': 'Unit ${index + 1}',
+                              'address': virtualUnitAddresses[index].text.trim(),
+                              'city': city.text.trim(),
+                              'country': 'Cyprus',
+                            }),
+                          );
+                        }
                         if (ctx.mounted) Navigator.pop(ctx, id != null);
                       } on PostgrestException catch (e) {
                         if (type == 'building' && e.code == '23505') {
@@ -398,6 +453,9 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
     city.dispose();
     other.dispose();
     apartments.dispose();
+    for (final controller in virtualUnitAddresses) {
+      controller.dispose();
+    }
     if (saved == true && mounted) await _refresh();
     if (matchingBuilding != null && mounted) {
       await _requestManagerClaim(matchingBuilding!);
@@ -936,4 +994,3 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
     ),
   );
 }
-

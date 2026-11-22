@@ -156,6 +156,48 @@ class _AdminReviewScreenState extends State<AdminReviewScreen>
     }
   }
 
+  Future<void> editRegistrationRoles(String userId, List<String> currentRoles) async {
+    final selected = currentRoles.toSet();
+    final result = await showDialog<List<String>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialog) => AlertDialog(
+          title: Text(gr ? 'Δικαιώματα λογαριασμού' : 'Account roles'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            CheckboxListTile(
+              value: selected.contains('property_owner'),
+              title: Text(gr ? 'Ιδιοκτήτης' : 'Property owner'),
+              onChanged: (v) => setDialog(() => v == true
+                  ? selected.add('property_owner')
+                  : selected.remove('property_owner')),
+            ),
+            CheckboxListTile(
+              value: selected.contains('tenant'),
+              title: Text(gr ? 'Ενοικιαστής' : 'Tenant'),
+              onChanged: (v) => setDialog(() => v == true
+                  ? selected.add('tenant')
+                  : selected.remove('tenant')),
+            ),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(gr ? 'Άκυρο' : 'Cancel')),
+            FilledButton(onPressed: selected.isEmpty ? null : () => Navigator.pop(dialogContext, selected.toList()), child: Text(gr ? 'Αποθήκευση' : 'Save')),
+          ],
+        ),
+      ),
+    );
+    if (result == null) return;
+    try {
+      await db.rpc('admin_set_account_roles', params: {
+        'p_user_id': userId,
+        'p_requested_roles': result,
+      });
+      if (mounted) setState(() {});
+    } on PostgrestException catch (error) {
+      notify(error.message);
+    }
+  }
+
   Widget registrationRequests() => FutureBuilder<List<Map<String, dynamic>>>(
     future: loadRegistrationRequests(),
     builder: (context, snapshot) {
@@ -195,10 +237,19 @@ class _AdminReviewScreenState extends State<AdminReviewScreen>
                   '$roles · ${statusLabel(request['status'] as String?)}',
                 ),
                 isThreeLine: true,
-                trailing: pending && isAdmin
+                trailing: isAdmin
                     ? Wrap(
                         spacing: 0,
                         children: [
+                          IconButton(
+                            tooltip: gr ? 'Αλλαγή ρόλων' : 'Edit roles',
+                            onPressed: () => editRegistrationRoles(
+                              userId,
+                              List<String>.from((request['requested_roles'] as List?) ?? const []),
+                            ),
+                            icon: const Icon(Icons.manage_accounts_outlined),
+                          ),
+                          if (pending) ...[
                           IconButton(
                             tooltip: gr ? 'Έγκριση' : 'Approve',
                             onPressed: () => reviewRegistration(userId, 'approved'),
@@ -211,6 +262,7 @@ class _AdminReviewScreenState extends State<AdminReviewScreen>
                             icon: const Icon(Icons.cancel_outlined),
                             color: Colors.red,
                           ),
+                          ],
                         ],
                       )
                     : null,
@@ -659,7 +711,6 @@ class _AdminReviewScreenState extends State<AdminReviewScreen>
     ]),
   );
 }
-
 
 
 

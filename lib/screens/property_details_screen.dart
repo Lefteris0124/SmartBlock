@@ -47,6 +47,7 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
   late bool _isGreek;
   late Future<_ReviewReadiness> _reviewReadinessFuture;
   late Future<List<Map<String, dynamic>>> _ownersFuture;
+  late Future<bool> _canManageProperty;
   bool _isSubmitting = false;
   late final VoidCallback _languageListener;
 
@@ -62,6 +63,9 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
     language.selected.addListener(_languageListener);
     _reviewReadinessFuture = _loadReviewReadiness();
     _ownersFuture = _loadOwners();
+    _canManageProperty = _client.rpc('can_manage_property', params: {
+      'p_property_id': _property['id'],
+    }).then((value) => value == true).catchError((_) => false);
   }
 
   @override
@@ -497,14 +501,19 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
             ),
           ),
           const SizedBox(height: 10),
-          OutlinedButton.icon(
-            onPressed: _openManagement,
-            icon: const Icon(Icons.handyman_outlined),
-            label: Text(
-              _isGreek
-                  ? 'Υπηρεσίες · Αναφορά βλάβης · Διαχείριση'
-                  : 'Services · Report a problem · Management',
-            ),
+          FutureBuilder<bool>(
+            future: _canManageProperty,
+            builder: (context, snapshot) => snapshot.data == true
+                ? OutlinedButton.icon(
+                    onPressed: _openManagement,
+                    icon: const Icon(Icons.handyman_outlined),
+                    label: Text(
+                      _isGreek
+                          ? 'Υπηρεσίες · Διαχείριση κτιρίου'
+                          : 'Services · Building management',
+                    ),
+                  )
+                : const SizedBox.shrink(),
           ),
           if (isDraft) ...[
             const SizedBox(height: 12),
@@ -614,4 +623,3 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
     ),
   );
 }
-

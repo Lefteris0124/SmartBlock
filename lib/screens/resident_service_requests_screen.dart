@@ -108,6 +108,7 @@ class _ResidentServiceRequestsScreenState
     if (!mounted) return;
 
     var requestType = 'damage_report';
+    var issueScope = 'unit';
     var priority = 'normal';
     var serviceId = '';
     var apartmentNumber = widget.apartmentNumber;
@@ -133,6 +134,26 @@ class _ResidentServiceRequestsScreenState
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        if (requestType == 'damage_report') ...[
+                          DropdownButtonFormField<String>(
+                            initialValue: issueScope,
+                            decoration: InputDecoration(
+                              labelText: gr ? 'Πού είναι η βλάβη;' : 'Where is the problem?',
+                            ),
+                            items: [
+                              DropdownMenuItem(value: 'unit', child: Text(gr ? 'Μέσα στο διαμέρισμα' : 'Inside my apartment')),
+                              DropdownMenuItem(value: 'building', child: Text(gr ? 'Στο κτίριο / κοινόχρηστο χώρο' : 'Building / common area')),
+                            ],
+                            onChanged: (value) {
+                              if (value != null) setDialog(() {
+                                issueScope = value;
+                                apartmentNumber = value == 'building' ? 'common_area' : widget.apartmentNumber;
+                              });
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                        ],
+                        if (requestType != 'damage_report')
                         DropdownButtonFormField<String>(
                           initialValue: apartmentNumber,
                           decoration: InputDecoration(
@@ -320,6 +341,7 @@ class _ResidentServiceRequestsScreenState
           'p_title': title.text.trim(),
           'p_description': description.text.trim(),
           'p_location': location.text.trim(),
+          'p_issue_scope': issueScope,
         },
       );
       if (!mounted) return;
@@ -462,4 +484,3 @@ class _ResidentServiceRequestsScreenState
     ),
   );
 }
-

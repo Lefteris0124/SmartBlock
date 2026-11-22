@@ -461,7 +461,16 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } on AuthException catch (error) {
       if (!mounted) return;
-      _showMessage(error.message);
+      // Supabase intentionally returns the same auth error for an unknown email
+      // and a bad password. Keep the UI clear without exposing account existence.
+      final message = error.code == 'email_not_confirmed'
+          ? (isGreek
+                ? 'Επιβεβαίωσε πρώτα το email σου από το μήνυμα που έλαβες.'
+                : 'Confirm your email first using the message we sent you.')
+          : (isGreek
+                ? 'Τα στοιχεία σύνδεσης δεν είναι σωστά. Έλεγξε email και κωδικό ή κάνε εγγραφή.'
+                : 'Your sign-in details are incorrect. Check your email and password, or create an account.');
+      _showMessage(message);
     } catch (_) {
       if (!mounted) return;
       _showMessage(
@@ -885,4 +894,3 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
-
