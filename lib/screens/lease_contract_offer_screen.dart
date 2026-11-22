@@ -145,6 +145,12 @@ class _LeaseContractOfferScreenState extends State<LeaseContractOfferScreen> {
                             : 'Sign in with the email this invitation was sent to. If you do not have an account, create one using that email.',
                         textAlign: TextAlign.center,
                       ),
+                      const SizedBox(height: 14),
+                      FilledButton.icon(
+                        onPressed: () => _db.auth.signOut(),
+                        icon: const Icon(Icons.switch_account_outlined),
+                        label: Text(_greek ? 'Αλλαγή λογαριασμού' : 'Switch account'),
+                      ),
                     ],
                   ),
                 ),
