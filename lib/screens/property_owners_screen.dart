@@ -117,6 +117,7 @@ class _PropertyOwnersScreenState extends State<PropertyOwnersScreen> {
     var hasSearched = false;
     var searchVersion = 0;
     Timer? searchDebounce;
+    var dialogOpen = true;
     String? searchError;
     String? selectedUserId;
     final selected = await showDialog<Map<String, dynamic>>(
@@ -151,7 +152,7 @@ class _PropertyOwnersScreenState extends State<PropertyOwnersScreen> {
                   'p_search': query,
                 },
               );
-              if (requestVersion == searchVersion) {
+              if (dialogOpen && requestVersion == searchVersion) {
                 setDialog(() {
                   accounts = List<Map<String, dynamic>>.from(result);
                   hasSearched = true;
@@ -302,6 +303,9 @@ class _PropertyOwnersScreenState extends State<PropertyOwnersScreen> {
         },
       ),
     );
+    dialogOpen = false;
+    searchDebounce?.cancel();
+    searchVersion++;
     searchController.dispose();
     if (selected == null) return;
     try {
