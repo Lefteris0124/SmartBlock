@@ -129,7 +129,7 @@ class _SmartBlockAppState extends State<SmartBlockApp> {
             builder: (context, trialActive, _) => Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (trialActive)
+                if (trialActive || SmartBlockTrialSession.shouldShowReturnControls)
                   _TrialReturnBar(
                     isGreek: language.isGreek,
                     role: SmartBlockTrialSession.role,
