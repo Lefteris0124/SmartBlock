@@ -55,8 +55,8 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     } catch (_) {
       if (mounted) {
         setState(() {
-          isAdmin = true;
-          canManageProperty = true;
+          isAdmin = false;
+          canManageProperty = false;
         });
       }
     }
@@ -2242,35 +2242,81 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     }
   }
 
+  Future<List<Map<String, dynamic>>> _rentData() async {
+    final contracts = await rows('property_rent_contracts');
+    final offers = List<Map<String, dynamic>>.from(
+      await db.rpc(
+        'list_lease_contract_offers',
+        params: {'p_property_id': widget.propertyId},
+      ),
+    );
+    return [
+      ...offers.map((row) => {...row, '_lease_offer': true}),
+      ...contracts.map((row) => {...row, '_lease_offer': false}),
+    ];
+  }
+
   Widget rentListing() => FutureBuilder<List<Map<String, dynamic>>>(
-    future: rows('property_rent_contracts'),
+    future: _rentData(),
     builder: (context, snapshot) {
       if (snapshot.connectionState == ConnectionState.waiting)
         return const Center(child: CircularProgressIndicator());
       if (snapshot.hasError) return loadError();
-      final contracts = snapshot.data ?? [];
-      if (contracts.isEmpty)
+      final records = snapshot.data ?? [];
+      final offers = records.where((row) => row['_lease_offer'] == true).toList();
+      final contracts = records.where((row) => row['_lease_offer'] != true).toList();
+      if (records.isEmpty && canManageProperty) {
         return emptyState(
           icon: Icons.key_outlined,
-          title: gr
-              ? 'Δεν υπάρχουν μισθώσεις ακόμη'
-              : 'No rental contracts yet',
+          title: gr ? 'Δεν υπάρχουν μισθώσεις ακόμη' : 'No rental agreements yet',
           description: gr
-              ? 'Πρόσθεσε μίσθωση για να παρακολουθείς ενοίκια και πληρωμές.'
-              : 'Add a rental to track rent and payments.',
-          action: gr ? 'Νέα μίσθωση' : 'Add a rental',
+              ? 'Δημιούργησε συμβόλαιο και στείλε ασφαλή πρόσκληση στον ενοικιαστή.'
+              : 'Create an agreement and send a secure invitation to the tenant.',
+          action: gr ? 'Νέο συμβόλαιο' : 'New agreement',
           onPressed: createRent,
         );
-      return ListView(
-        padding: const EdgeInsets.all(16),
-        children: contracts
-            .map(
-              (contract) => Card(
+      }
+      if (records.isEmpty) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(gr ? 'Δεν υπάρχουν μισθώσεις συνδεδεμένες με τον λογαριασμό σου.' : 'There are no rental agreements linked to this account.'),
+          ),
+        );
+      }
+      return RefreshIndicator(
+        onRefresh: refresh,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            if (offers.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
+                child: Text(gr ? 'Προσκλήσεις συμβολαίου' : 'Agreement invitations',
+                    style: Theme.of(context).textTheme.titleMedium),
+              ),
+              ...offers.map((offer) => Card(
+                child: ListTile(
+                  leading: Icon(offer['status'] == 'accepted'
+                      ? Icons.verified_outlined
+                      : Icons.outgoing_mail),
+                  title: Text('${offer['unit_reference']} · ${offer['tenant_name']}'),
+                  subtitle: Text(
+                    '${offer['monthly_rent']} ${offer['currency']} / ${gr ? 'μήνα' : 'month'} · ${offer['status'] == 'accepted' ? (gr ? 'Αποδεκτό' : 'Accepted') : (gr ? 'Αναμένει τον ενοικιαστή' : 'Awaiting tenant')}',
+                  ),
+                ),
+              )),
+            ],
+            if (contracts.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+                child: Text(gr ? 'Ενεργές και προηγούμενες μισθώσεις' : 'Active and previous rentals',
+                    style: Theme.of(context).textTheme.titleMedium),
+              ),
+              ...contracts.map((contract) => Card(
                 child: ListTile(
                   leading: const Icon(Icons.key_outlined),
-                  title: Text(
-                    '${contract['unit_reference']} · ${contract['tenant_name']}',
-                  ),
+                  title: Text('${contract['unit_reference']} · ${contract['tenant_name']}'),
                   subtitle: Text(
                     '${contract['monthly_rent']} ${contract['currency']} / ${gr ? 'μήνα' : 'month'} · ${switch (contract['status']) {
                       'active' => gr ? 'Ενεργή' : 'Active',
@@ -2282,12 +2328,9 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
                   trailing: Wrap(
                     spacing: 2,
                     children: [
-                      if (contract['status'] == 'active' ||
-                          contract['status'] == 'ended')
+                      if (canManageProperty && (contract['status'] == 'active' || contract['status'] == 'ended'))
                         IconButton(
-                          tooltip: gr
-                              ? 'Προετοιμασία ανανέωσης'
-                              : 'Prepare renewal',
+                          tooltip: gr ? 'Προετοιμασία ανανέωσης' : 'Prepare renewal',
                           icon: const Icon(Icons.edit_document),
                           onPressed: () => _startLeaseRenewal(contract),
                         ),
@@ -2295,30 +2338,23 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
                         PopupMenuButton<String>(
                           onSelected: (action) {
                             if (action == 'edit') _editRent(contract);
-                            if (action == 'delete')
-                              _deleteRow(
-                                'property_rent_contracts',
-                                contract['id'],
-                                gr ? 'μίσθωση' : 'rental contract',
-                              );
+                            if (action == 'delete') {
+                              _deleteRow('property_rent_contracts', contract['id'],
+                                  gr ? 'μίσθωση' : 'rental contract');
+                            }
                           },
                           itemBuilder: (ctx) => [
-                            PopupMenuItem(
-                              value: 'edit',
-                              child: Text(gr ? 'Επεξεργασία' : 'Edit'),
-                            ),
-                            PopupMenuItem(
-                              value: 'delete',
-                              child: Text(gr ? 'Διαγραφή' : 'Delete'),
-                            ),
+                            PopupMenuItem(value: 'edit', child: Text(gr ? 'Επεξεργασία' : 'Edit')),
+                            PopupMenuItem(value: 'delete', child: Text(gr ? 'Διαγραφή' : 'Delete')),
                           ],
                         ),
                     ],
                   ),
                 ),
-              ),
-            )
-            .toList(),
+              )),
+            ],
+          ],
+        ),
       );
     },
   );
@@ -2354,21 +2390,24 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     ),
     floatingActionButton: AnimatedBuilder(
       animation: tabs,
-      builder: (context, _) => FloatingActionButton.extended(
-        onPressed: switch (tabs.index) {
-          0 => createVote,
-          1 => createNote,
-          2 => createCharge,
-          _ => createRent,
-        },
-        icon: const Icon(Icons.add),
-        label: Text(switch (tabs.index) {
-          0 => gr ? 'Νέα ψηφοφορία' : 'New vote',
-          1 => gr ? 'Νέα σημείωση' : 'New notice',
-          2 => gr ? 'Νέα χρέωση' : 'New charge',
-          _ => gr ? 'Νέα μίσθωση' : 'New rental',
-        }),
-      ),
+      builder: (context, _) {
+        if (tabs.index == 3 && !canManageProperty) return const SizedBox.shrink();
+        return FloatingActionButton.extended(
+          onPressed: switch (tabs.index) {
+            0 => createVote,
+            1 => createNote,
+            2 => createCharge,
+            _ => createRent,
+          },
+          icon: const Icon(Icons.add),
+          label: Text(switch (tabs.index) {
+            0 => gr ? 'Νέα ψηφοφορία' : 'New vote',
+            1 => gr ? 'Νέα σημείωση' : 'New notice',
+            2 => gr ? 'Νέα χρέωση' : 'New charge',
+            _ => gr ? 'Νέο συμβόλαιο' : 'New agreement',
+          }),
+        );
+      },
     ),
     body: TabBarView(
       controller: tabs,
