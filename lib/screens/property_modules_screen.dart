@@ -916,7 +916,7 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
         builder: (ctx, setDialog) => AlertDialog(
           title: Text(gr ? 'Νέο συμβόλαιο μίσθωσης' : 'New rental agreement'),
           content: SizedBox(
-            width: 540,
+            width: MediaQuery.sizeOf(ctx).width < 620 ? MediaQuery.sizeOf(ctx).width * .82 : 540,
             child: Form(
               key: key,
               child: SingleChildScrollView(
@@ -1028,7 +1028,7 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
           builder: (ctx) => AlertDialog(
             title: Text(gr ? 'Το συμβόλαιο δημιουργήθηκε' : 'Agreement created'),
             content: SizedBox(
-              width: 520,
+              width: MediaQuery.sizeOf(ctx).width < 620 ? MediaQuery.sizeOf(ctx).width * .82 : 520,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
