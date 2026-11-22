@@ -69,7 +69,9 @@ Deno.serve(async (request: Request) => {
   const { data: usersPage, error: listError } = await serviceClient.auth.admin.listUsers({ page: 1, perPage: 1000 });
   if (listError) return json({ error: "Could not prepare the trial account." }, 500);
   const existing = usersPage.users.find((user) => user.email?.toLowerCase() === email);
-  const password = `${crypto.randomUUID()}-${crypto.randomUUID()}Aa1!`;
+  // Supabase Auth caps passwords at 72 characters. Keep the generated one
+  // short enough while retaining a random, one-time credential.
+  const password = `${crypto.randomUUID()}Aa1!`;
   const metadata = { smartblock_trial: true, smartblock_trial_role: role };
 
   if (existing) {
@@ -164,7 +166,7 @@ async function ensureOtherTrialAccount(client: ReturnType<typeof createClient>, 
   const { data, error } = await client.auth.admin.listUsers({ page: 1, perPage: 1000 });
   if (error) return null;
   const existing = data.users.find((user) => user.email?.toLowerCase() === email);
-  const password = `${crypto.randomUUID()}-${crypto.randomUUID()}Aa1!`;
+  const password = `${crypto.randomUUID()}Aa1!`;
   const appMetadata = { smartblock_trial: true, smartblock_trial_role: role };
   if (existing) {
     const { error: updateError } = await client.auth.admin.updateUserById(existing.id, {
@@ -184,3 +186,4 @@ async function ensureOtherTrialAccount(client: ReturnType<typeof createClient>, 
   });
   return createError ? null : created.user?.id ?? null;
 }
+
