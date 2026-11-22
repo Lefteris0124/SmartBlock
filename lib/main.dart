@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 10187)
-Total output lines: 1073
-
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -35,7 +32,6 @@ class SmartBlockApp extends StatefulWidget {
 
 class _SmartBlockAppState extends State<SmartBlockApp> {
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
-
   @override
   void initState() {
     super.initState();
@@ -147,7 +143,6 @@ class _SmartBlockAppState extends State<SmartBlockApp> {
       ),
     );
   }
-
   Future<void> _returnToAdmin() async {
     await SmartBlockTrialSession.stop();
     _navigatorKey.currentState?.popUntil((route) => route.isFirst);
@@ -569,7 +564,25 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isValidEmail(String email) =>
       RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email);
 
-  Future<void> _submitAuth()…187 tokens truncated…ast 8 characters.'
+  Future<void> _submitAuth() async {
+    final email = emailController.text.trim();
+    final password = passwordController.text;
+    if (!_isValidEmail(email)) {
+      _showMessage(
+        isGreek
+            ? 'Συμπλήρωσε έγκυρη διεύθυνση email.'
+            : 'Enter a valid email address.',
+      );
+      return;
+    }
+    if (password.isEmpty || (isCreatingAccount && password.length < 8)) {
+      _showMessage(
+        isGreek
+            ? (isCreatingAccount
+                  ? 'Ο κωδικός πρέπει να έχει τουλάχιστον 8 χαρακτήρες.'
+                  : 'Συμπλήρωσε τον κωδικό σου.')
+            : (isCreatingAccount
+                  ? 'Password must be at least 8 characters.'
                   : 'Enter your password.'),
       );
       return;
@@ -1054,5 +1067,4 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
-
 
