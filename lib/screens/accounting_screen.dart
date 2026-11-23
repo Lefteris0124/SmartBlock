@@ -18,6 +18,8 @@ class _AccountingScreenState extends State<AccountingScreen>{
   String? error;
   Map<String,dynamic> summary={};
   List<Map<String,dynamic>> statements=[];
+  List<Map<String,dynamic>> receipts=[];
+  List<Map<String,dynamic>> journals=[];
   int year=DateTime.now().year;
   @override
   void initState(){super.initState();greek=SmartBlockLanguageController.instance.selected.value.isGreek;refresh();}
@@ -25,7 +27,11 @@ class _AccountingScreenState extends State<AccountingScreen>{
     setState(()=>loading=true);
     try{
       admin=await db.rpc('is_smartblock_admin')==true;
-      if(admin)summary=Map<String,dynamic>.from(await db.rpc('admin_accounting_dashboard') as Map);
+      if(admin){
+        summary=Map<String,dynamic>.from(await db.rpc('admin_accounting_dashboard') as Map);
+        receipts=List<Map<String,dynamic>>.from(await db.from('accounting_receipts').select('receipt_number,description,amount,currency,payment_method,issued_at,payment_reference,details').order('issued_at',ascending:false).limit(25));
+        journals=List<Map<String,dynamic>>.from(await db.from('accounting_journal_entries').select('posting_date,source_type,description,accounting_journal_lines(account_code,debit,credit,description)').order('posting_date',ascending:false).limit(25));
+      }
       else {
         statements=List<Map<String,dynamic>>.from(await db.rpc('my_accounting_statements') as List);
         final buildings=List<Map<String,dynamic>>.from(await db.rpc('my_building_accounting_statements') as List);
@@ -77,6 +83,16 @@ class _AccountingScreenState extends State<AccountingScreen>{
       metric(greek?'Προμήθειες SmartBlock':'SmartBlock fees',summary['smartblock_fees'],Icons.account_balance_wallet_outlined),
       metric(greek?'Προς απόδοση':'Due to owners',summary['owner_payout_due'],Icons.outbox_outlined),
       metric(greek?'Αναμονή σύνδεσης Stripe':'Awaiting Stripe connection',summary['awaiting_connect'],Icons.link_off_outlined),
+      Card(child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+        Text(greek?'Πρόσφατες αποδείξεις':'Recent receipts',style:Theme.of(context).textTheme.titleMedium),
+        if(receipts.isEmpty)Text(greek?'Δεν έχουν εκδοθεί ακόμη αποδείξεις.':'No receipts have been issued yet.'),
+        ...receipts.map((r)=>ListTile(leading:const Icon(Icons.receipt_long_outlined),title:Text((r['receipt_number']??'').toString()),subtitle:Text((r['description']??'').toString()+' · '+(r['issued_at']??'').toString()),trailing:Text(money(r['amount'])))),
+      ]))),
+      Card(child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+        Text(greek?'Πρόσφατες λογιστικές εγγραφές':'Recent journal entries',style:Theme.of(context).textTheme.titleMedium),
+        if(journals.isEmpty)Text(greek?'Δεν έχουν καταχωριστεί ακόμη εγγραφές.':'No journal entries yet.'),
+        ...journals.map((j)=>ExpansionTile(title:Text((j['description']??'').toString()),subtitle:Text((j['posting_date']??'').toString()+' · '+(j['source_type']??'').toString()),children:[for(final l in (j['accounting_journal_lines'] as List? ?? const []))ListTile(title:Text((l['account_code']??'').toString()),subtitle:Text((l['description']??'').toString()),trailing:Text((greek?'Χρέωση ':'Debit ')+money(l['debit'])+' · '+(greek?'Πίστωση ':'Credit ')+money(l['credit'])))])),
+      ]))),
       Card(child:Padding(padding:const EdgeInsets.all(12),child:Column(children:[
         Text(greek?'Ουρά αποδόσεων ιδιοκτητών':'Owner payout queue',style:Theme.of(context).textTheme.titleMedium),
         if(rows.isEmpty)Text(greek?'Δεν υπάρχουν ακόμη εισπράξεις προς απόδοση.':'No owner payouts yet.'),
