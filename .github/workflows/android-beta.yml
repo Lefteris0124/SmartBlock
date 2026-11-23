@@ -1,0 +1,63 @@
+name: SmartBlock Android beta
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - ".github/workflows/deploy-web.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: smartblock-android-beta
+  cancel-in-progress: false
+
+jobs:
+  build-android-beta:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Verify Supabase build configuration
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          test -n "$SUPABASE_URL" || (echo "Set the SUPABASE_URL repository variable." && exit 1)
+          test -n "$SUPABASE_PUBLISHABLE_KEY" || (echo "Set the SUPABASE_PUBLISHABLE_KEY repository variable." && exit 1)
+      - name: Install Flutter dependencies
+        run: flutter pub get
+      - name: Build installable Android beta
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          flutter build apk --debug \
+            --dart-define=SUPABASE_URL="$SUPABASE_URL" \
+            --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
+          cp build/app/outputs/flutter-apk/app-debug.apk SmartBlock-android-beta.apk
+      - name: Publish rolling beta download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view mobile-beta >/dev/null 2>&1; then
+            gh release upload mobile-beta SmartBlock-android-beta.apk --clobber
+            gh release edit mobile-beta --title "SmartBlock Android beta" --notes "Installable preview build for Android testers. This is a pre-release and may change."
+          else
+            gh release create mobile-beta SmartBlock-android-beta.apk \
+              --prerelease \
+              --title "SmartBlock Android beta" \
+              --notes "Installable preview build for Android testers. This is a pre-release and may change."
+          fi
