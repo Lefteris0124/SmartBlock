@@ -171,7 +171,7 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
       await _open(LeaseRenewalsScreen(isGreek: _greek, isStaff: isStaff));
       return;
     }
-    if (propertyId == null) {
+    if (relatedType.startsWith('accounting_') || type == 'accounting_statement') {\n      await _open(const AccountingScreen());\n      return;\n    }\n    if (propertyId == null) {
       await _open(SupportChatScreen(isGreek: _greek));
       return;
     }
