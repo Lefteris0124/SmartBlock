@@ -26,7 +26,12 @@ class _AccountingScreenState extends State<AccountingScreen>{
     try{
       admin=await db.rpc('is_smartblock_admin')==true;
       if(admin)summary=Map<String,dynamic>.from(await db.rpc('admin_accounting_dashboard') as Map);
-      else statements=List<Map<String,dynamic>>.from(await db.rpc('my_accounting_statements') as List);
+      else {
+        statements=List<Map<String,dynamic>>.from(await db.rpc('my_accounting_statements') as List);
+        final buildings=List<Map<String,dynamic>>.from(await db.rpc('my_building_accounting_statements') as List);
+        statements.addAll(buildings.map((s)=>{...s,'total_collected':s['total_collected'],'owner_payout_due':s['balance_due']}));
+        statements.sort((a,b)=>(b['statement_month'] as String).compareTo(a['statement_month'] as String));
+      }
       error=null;
     }catch(e){error=e.toString();}
     finally{if(mounted)setState(()=>loading=false);}
@@ -87,7 +92,7 @@ class _AccountingScreenState extends State<AccountingScreen>{
   Widget accountView()=>ListView(padding:const EdgeInsets.all(16),children:[
     Text(greek?'Οι οικονομικές μου καταστάσεις':'My financial statements',style:Theme.of(context).textTheme.headlineSmall),
     if(statements.isEmpty)Card(child:Padding(padding:const EdgeInsets.all(20),child:Text(greek?'Δεν υπάρχει ακόμη διαθέσιμη κατάσταση.':'No statement available yet.'))),
-    ...statements.map((s){final data=Map<String,dynamic>.from((s['statement_data'] as Map?)??const {});final receipts=data['receipts'] as List? ?? const [];return Card(child:ExpansionTile(leading:const Icon(Icons.receipt_long_outlined),title:Text((s['statement_month']??'').toString()),subtitle:Text((greek?'Εισπράξεις: ':'Collections: ')+money(s['total_collected'])+' · '+(greek?'Προς απόδοση: ':'Owner due: ')+money(s['owner_payout_due'])),children:[for(final r in receipts)ListTile(title:Text((r['description']??'').toString()),subtitle:Text((r['issued_at']??'').toString()),trailing:Text(money(r['amount'])))]));}),
+    ...statements.map((s){final data=Map<String,dynamic>.from((s['statement_data'] as Map?)??const {});final receipts=data['receipts'] as List? ?? const [];return Card(child:ExpansionTile(leading:const Icon(Icons.receipt_long_outlined),title:Text((s['statement_month']??'').toString()),subtitle:Text((greek?'Εισπράξεις: ':'Collections: ')+money(s['total_collected'])+' · '+(greek?'Προς απόδοση: ':'Owner due: ')+money(s['owner_payout_due'])),children:[for(final r in receipts)ListTile(title:Text((r['description']??'').toString()),subtitle:Text((r['issued_at']??'').toString()),trailing:Text(money(r['amount']))),for(final c in (data['charges'] as List? ?? const []))ListTile(leading:const Icon(Icons.receipt_long),title:Text((c['description']??'').toString()),subtitle:Text((greek?'Υπόλοιπο: ':'Balance: ')+money(c['balance'])),trailing:Text(money(c['amount']))),for(final e in (data['expenses'] as List? ?? const []))ListTile(leading:const Icon(Icons.build_outlined),title:Text((e['description']??'').toString()),subtitle:Text((e['expense_date']??'').toString()),trailing:Text(money(e['amount'])))]));}),
   ]);
   @override
   Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:Text(greek?'Οικονομικά':'Accounting'),actions:[IconButton(onPressed:loading||busy?null:refresh,icon:const Icon(Icons.refresh))]),body:loading?const Center(child:CircularProgressIndicator()):error!=null?Center(child:Padding(padding:const EdgeInsets.all(20),child:Text(error!))):Stack(children:[admin?adminView():accountView(),if(busy)const Positioned.fill(child:ColoredBox(color:Color(0x55FFFFFF),child:Center(child:CircularProgressIndicator())))]));
