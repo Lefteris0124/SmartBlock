@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'admin_review_screen.dart';
 import 'admin_billing_screen.dart';
+import 'accounting_screen.dart';
 import 'properties_screen.dart';
 import 'lease_renewals_screen.dart';
 import 'support_chat_screen.dart';
@@ -973,6 +974,14 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
                 },
               ),
             const SizedBox(height: 8),
+            _RoleCard(
+              icon: Icons.account_balance_outlined,
+              title: _greek ? 'Λογιστικές καταστάσεις' : 'Accounting statements',
+              detail: access.isAdmin
+                  ? (_greek ? 'Εισπράξεις, αποδείξεις, αποδόσεις και αρχεία ελέγχου.' : 'Collections, receipts, owner payouts and audit exports.')
+                  : (_greek ? 'Προβολή των οικονομικών καταστάσεων του λογαριασμού σου.' : 'View your financial statements.'),
+              onTap: () => _open(const AccountingScreen()),
+            ),
             _RoleCard(
               icon: Icons.edit_document,
               title: _greek ? 'Ανανεώσεις μισθώσεων' : 'Lease renewals',
