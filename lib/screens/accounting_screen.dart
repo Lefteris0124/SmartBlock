@@ -121,13 +121,14 @@ class _AccountingScreenState extends State<AccountingScreen>{
           final payouts=(p['owner_payouts'] as List? ?? const []).whereType<Map>().map((v)=>Map<String,dynamic>.from(v)).toList();
           return Card(child:ExpansionTile(
             leading:const Icon(Icons.home_work_outlined),
-            title:Text((p['name']??(greek?'Ακίνητο':'Property')).toString()),
+            title:Text((p['name']??(greek?'Ακίνητο':'Property')).toString()+' · #'+(p['reference']??'').toString()),
             subtitle:Text((p['address']??'').toString()),
             children:[
               if(debts.isEmpty) ListTile(title:Text(greek?'Δεν υπάρχουν οφειλές καταχωρισμένες για αυτό το ακίνητο.':'No recorded debts for this property.')),
               for(final d in debts) ListTile(
                 leading:Icon(d['direction']=='owed_to_owner'?Icons.call_received_outlined:Icons.call_made_outlined),
-                title:Text((d['source']??'').toString()+(d['unit_number']==null?'':' · '+d['unit_number'].toString())),
+                title:Text((d['source']??'').toString()+(d['unit_number']==null?'':' · '+(greek?'Μονάδα ':'Unit ')+d['unit_number'].toString())),
+                if(d['source_type']=='property_charge' && (d['area_sqm']!=null || d['owner_apartment_count']!=null)) subtitle:Text((greek?'Στοιχεία ιδιοκτησίας: ':'Ownership details: ')+(d['owner_apartment_count']==null?'':(greek?'διαμερίσματα ':'apartments ')+d['owner_apartment_count'].toString())+(d['owner_apartment_count']!=null && d['area_sqm']!=null?' · ':'')+(d['area_sqm']==null?'':d['area_sqm'].toString()+' m²')),
                 subtitle:Text((d['description']??'').toString()+' · '+(greek?'Περίοδος ':'Period ')+(d['period']??'').toString()+' · '+(greek?'Λήξη ':'Due ')+(d['due_date']??'').toString()+' · '+(d['direction']=='owed_to_owner'?(greek?'Οφείλεται σε εσένα':'Due to you'):(greek?'Οφείλεις':'You owe'))),
                 trailing:Text(money(d['balance'])),
               ),
