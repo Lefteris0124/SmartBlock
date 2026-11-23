@@ -128,7 +128,7 @@ class _AccountingScreenState extends State<AccountingScreen>{
               for(final d in debts) ListTile(
                 leading:Icon(d['direction']=='owed_to_owner'?Icons.call_received_outlined:Icons.call_made_outlined),
                 title:Text((d['source']??'').toString()+(d['unit_number']==null?'':' · '+d['unit_number'].toString())),
-                subtitle:Text((d['description']??'').toString()+' · '+(greek?'Περίοδος ':'Period ')+(d['period']??'').toString()+' · '+(greek?'Λήξη ':'Due ')+(d['due_date']??'').toString()+' · '+(d['direction']=='owed_to_owner'?(greek?'Οφείλεται σε εσένα':'Due to you'):(greek?'Οφείλεις':'You owe')),
+                subtitle:Text((d['description']??'').toString()+' · '+(greek?'Περίοδος ':'Period ')+(d['period']??'').toString()+' · '+(greek?'Λήξη ':'Due ')+(d['due_date']??'').toString()+' · '+(d['direction']=='owed_to_owner'?(greek?'Οφείλεται σε εσένα':'Due to you'):(greek?'Οφείλεις':'You owe'))),
                 trailing:Text(money(d['balance'])),
               ),
               for(final r in receipts) ListTile(leading:const Icon(Icons.receipt_outlined),title:Text((r['receipt_number']??r['description']??'').toString()),subtitle:Text((r['date']??'').toString()),trailing:Text(money(r['amount']))),
@@ -150,7 +150,7 @@ class _AccountingScreenState extends State<AccountingScreen>{
               for(final d in debts) ListTile(
                 leading:const Icon(Icons.receipt_long_outlined),
                 title:Text((d['source']??'').toString()+' · '+(d['description']??'').toString()),
-                subtitle:Text((greek?'Περίοδος ':'Period ')+(d['period']??'').toString()+' · '+(greek?'Λήξη ':'Due ')+(d['due_date']??'').toString()+' · '+(greek?'Οφείλεις':'You owe'),
+                subtitle:Text((greek?'Περίοδος ':'Period ')+(d['period']??'').toString()+' · '+(greek?'Λήξη ':'Due ')+(d['due_date']??'').toString()+' · '+(greek?'Οφείλεις':'You owe')),
                 trailing:Text(money(d['balance'])),
               ),
               for(final r in receipts) ListTile(leading:const Icon(Icons.receipt_outlined),title:Text((r['receipt_number']??r['description']??'').toString()),subtitle:Text((r['date']??'').toString()),trailing:Text(money(r['amount']))),
