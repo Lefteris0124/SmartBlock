@@ -25,7 +25,7 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
 
   Future<void> refresh() async {
     try {
-      final result = await Future.wait([
+      final result = await Future.wait<dynamic>([
         db.from('property_apartments').select().eq('property_id', widget.propertyId).order('apartment_number'),
         db.rpc('list_lease_contract_offers', params: {'p_property_id': widget.propertyId}),
       ]);
