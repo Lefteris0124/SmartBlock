@@ -17,8 +17,9 @@ class _LeaseContractOfferScreenState extends State<LeaseContractOfferScreen> {
   final _db = SmartBlockTrialSession.client;
   late Future<Map<String, dynamic>> _offer = _loadOffer();
   final _name = TextEditingController();
-  final _idType = TextEditingController();
   final _idNumber = TextEditingController();
+  final _idCountry = TextEditingController(text: 'Cyprus');
+  String _idTypeValue = 'national_id';
   bool _confirmed = false;
   bool _saving = false;
   bool _accepted = false;
@@ -35,8 +36,8 @@ class _LeaseContractOfferScreenState extends State<LeaseContractOfferScreen> {
   @override
   void dispose() {
     _name.dispose();
-    _idType.dispose();
     _idNumber.dispose();
+    _idCountry.dispose();
     super.dispose();
   }
 
@@ -79,11 +80,12 @@ class _LeaseContractOfferScreenState extends State<LeaseContractOfferScreen> {
     setState(() => _saving = true);
     try {
       await _db.rpc(
-        'accept_lease_contract_offer',
+        'accept_apartment_lease_offer',
         params: {
           'p_token': widget.token,
           'p_signer_name': _name.text.trim(),
-          'p_tenant_id_type': _idType.text.trim(),
+          'p_tenant_id_type': _idTypeValue,
+          'p_tenant_id_country': _idCountry.text.trim(),
           'p_tenant_id_number': _idNumber.text.trim(),
           'p_confirm': true,
         },
@@ -272,13 +274,17 @@ class _LeaseContractOfferScreenState extends State<LeaseContractOfferScreen> {
                             ),
                           ),
                           const SizedBox(height: 12),
-                          TextField(
-                            controller: _idType,
-                            decoration: InputDecoration(
-                              labelText: _greek ? 'Τύπος ταυτότητας / διαβατηρίου' : 'ID or passport type',
-                              prefixIcon: const Icon(Icons.badge_outlined),
-                            ),
+                          DropdownButtonFormField<String>(
+                            value: _idTypeValue,
+                            decoration: InputDecoration(labelText: _greek ? 'Ταυτότητα ή διαβατήριο' : 'National ID or passport'),
+                            items: [
+                              DropdownMenuItem(value: 'national_id', child: Text(_greek ? 'Ταυτότητα' : 'National ID')),
+                              DropdownMenuItem(value: 'passport', child: Text(_greek ? 'Διαβατήριο' : 'Passport')),
+                            ],
+                            onChanged: (value) => setState(() => _idTypeValue = value ?? 'national_id'),
                           ),
+                          const SizedBox(height: 12),
+                          TextField(controller: _idCountry, decoration: InputDecoration(labelText: _greek ? 'Χώρα έκδοσης' : 'Issuing country', prefixIcon: const Icon(Icons.public_outlined))),
                           const SizedBox(height: 12),
                           TextField(
                             controller: _idNumber,
