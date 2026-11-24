@@ -53,6 +53,7 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
   late Future<List<Map<String, dynamic>>> _ownersFuture;
   late Future<bool> _canManageProperty;
   late Future<bool> _ownerAccountsReady;
+  late Future<bool> _isLinkedOwner;
   bool _isSubmitting = false;
   late final VoidCallback _languageListener;
 
@@ -68,6 +69,17 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
     language.selected.addListener(_languageListener);
     _reviewReadinessFuture = _loadReviewReadiness();
     _ownersFuture = _loadOwners();
+    _isLinkedOwner = _ownersFuture.then((owners) {
+      final userId = _client.auth.currentUser?.id;
+      if (userId == null) return false;
+      return owners.any((owner) {
+        if (owner['ownership_status'] != 'active') return false;
+        final accounts = List<Map<String, dynamic>>.from(
+          (owner['registered_accounts'] as List?) ?? const [],
+        );
+        return accounts.any((account) => account['user_id']?.toString() == userId);
+      });
+    }).catchError((_) => false);
     _ownerAccountsReady = _client.rpc('property_owner_accounts_ready', params: {
       'p_property_id': _property['id'],
     }).then((value) => value == true).catchError((_) => false);
@@ -609,10 +621,17 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
             },
           ),
           FutureBuilder<bool>(
-            future: _canManageProperty,
-            builder: (context, snapshot) => snapshot.data == true
-                ? _apartmentsButton()
-                : const SizedBox.shrink(),
+            future: _isLinkedOwner,
+            builder: (context, ownerSnapshot) {
+              if (ownerSnapshot.data == true) return _apartmentsButton();
+              return FutureBuilder<bool>(
+                future: _canManageProperty,
+                builder: (context, managerSnapshot) =>
+                    managerSnapshot.data == true
+                    ? _apartmentsButton()
+                    : const SizedBox.shrink(),
+              );
+            },
           ),
           const SizedBox(height: 10),
           FutureBuilder<bool>(
