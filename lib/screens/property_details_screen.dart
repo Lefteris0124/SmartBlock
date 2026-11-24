@@ -71,9 +71,13 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
     _ownerAccountsReady = _client.rpc('property_owner_accounts_ready', params: {
       'p_property_id': _property['id'],
     }).then((value) => value == true).catchError((_) => false);
-    _canManageProperty = _client.rpc('can_manage_property', params: {
-      'p_property_id': _property['id'],
-    }).then((value) => value == true).catchError((_) => false);
+    _canManageProperty = Future.wait<dynamic>([
+      _client.rpc('can_manage_property', params: {
+        'p_property_id': _property['id'],
+      }),
+      _client.rpc('is_smartblock_admin'),
+    ]).then((values) => values.any((value) => value == true))
+        .catchError((_) => false);
   }
 
   @override
