@@ -7,6 +7,7 @@ import '../smartblock_text.dart';
 import 'property_owners_screen.dart';
 import 'property_modules_screen.dart';
 import 'property_management_screen.dart';
+import 'property_apartments_screen.dart';
 
 class _ReviewReadiness {
   const _ReviewReadiness({
@@ -322,6 +323,20 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
             : 'Votes · Notes · Finances'),
       );
 
+  Future<void> _openApartments() async {
+    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => PropertyApartmentsScreen(
+      propertyId: _property['id'] as String,
+      propertyName: _property['name'] as String? ?? '',
+      isGreek: _isGreek,
+    )));
+  }
+
+  Widget _apartmentsButton() => FilledButton.tonalIcon(
+    onPressed: _openApartments,
+    icon: const Icon(Icons.apartment_outlined),
+    label: Text(_isGreek ? 'Διαμερίσματα · Νέο συμβόλαιο' : 'Apartments · New lease'),
+  );
+
   Future<void> _openManagement() async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -588,6 +603,10 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
                 },
               );
             },
+          ),
+          FutureBuilder<bool>(
+            future: _canManageProperty,
+            builder: (context, snapshot) => snapshot.data == true ? _apartmentsButton() : const SizedBox.shrink(),
           ),
           const SizedBox(height: 10),
           FutureBuilder<bool>(
