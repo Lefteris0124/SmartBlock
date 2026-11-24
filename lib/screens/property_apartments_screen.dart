@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart' hide Text;
+import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../smartblock_trial_session.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -53,7 +53,7 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
         if (furnished) TextFormField(controller: furniture, maxLines: 2, decoration: InputDecoration(labelText: t('Έπιπλα και εξοπλισμός', 'Furniture and equipment'))),
         TextFormField(controller: comments, maxLines: 3, decoration: InputDecoration(labelText: t('Σχόλια', 'Comments'))),
       ])))),
-      actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(t('Άκυρο', 'Cancel'))), FilledButton(onPressed: () { if (form.currentState!.validate()) Navigator.pop(ctx, true); }, child: Text(t('Αποθήκευση', 'Save'))],
+      actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(t('Άκυρο', 'Cancel'))), FilledButton(onPressed: () { if (form.currentState!.validate()) Navigator.pop(ctx, true); }, child: Text(t('Αποθήκευση', 'Save')))],
     )));
     if (save == true) {
       setState(() => busy = true);
@@ -147,7 +147,7 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
           TextField(controller: signer, decoration: InputDecoration(labelText: t('Το ονοματεπώνυμό σου για υπογραφή','Your full name for signature'))),
           CheckboxListTile(value: confirmed, onChanged: (v) => setDialog(() => confirmed = v ?? false), title: Text(t('Επισκόπησα το υπογεγραμμένο συμβόλαιο και το εγκρίνω.','I reviewed and approve the tenant-signed lease.'))),
         ]))),
-        actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(t('Πίσω','Back'))), FilledButton(onPressed: confirmed && signer.text.trim().length >= 3 ? () => Navigator.pop(ctx, true) : null, child: Text(t('Τελική υπογραφή','Sign and activate'))],
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(t('Πίσω','Back'))), FilledButton(onPressed: confirmed && signer.text.trim().length >= 3 ? () => Navigator.pop(ctx, true) : null, child: Text(t('Τελική υπογραφή','Sign and activate')))],
       )));
       if (approve == true) {
         setState(() => busy = true);
