@@ -606,7 +606,9 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
           ),
           FutureBuilder<bool>(
             future: _canManageProperty,
-            builder: (context, snapshot) => snapshot.data == true ? _apartmentsButton() : const SizedBox.shrink(),
+            builder: (context, snapshot) => snapshot.data == true
+                ? _apartmentsButton()
+                : const SizedBox.shrink(),
           ),
           const SizedBox(height: 10),
           FutureBuilder<bool>(
