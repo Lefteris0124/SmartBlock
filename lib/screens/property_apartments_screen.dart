@@ -1,7 +1,11 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../smartblock_trial_session.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 class PropertyApartmentsScreen extends StatefulWidget {
   const PropertyApartmentsScreen({required this.propertyId, required this.propertyName, required this.isGreek, super.key});
@@ -112,6 +116,7 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
     );
     final ownerIdNo = TextEditingController();
     final ownerIdCountry = TextEditingController();
+    final ownerIdExpiry = TextEditingController();
     final tenantName = TextEditingController();
     final tenantEmail = TextEditingController();
     final tenantPhone = TextEditingController();
@@ -192,6 +197,13 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
                         controller: ownerIdNo,
                         decoration: _input(t('Αριθμός εγγράφου *', 'Document number *'), Icons.credit_card_outlined),
                         validator: required,
+                      ),
+                      TextFormField(
+                        controller: ownerIdExpiry,
+                        readOnly: true,
+                        decoration: _input(t('Ημερομηνία λήξης εγγράφου *', 'Document expiry date *'), Icons.event_busy_outlined, hint: 'YYYY-MM-DD'),
+                        validator: (value) => validFutureDate(value) ? null : t('Η ημερομηνία λήξης πρέπει να είναι στο μέλλον', 'Expiry date must be in the future'),
+                        onTap: () => chooseDate(ownerIdExpiry),
                       ),
                     ],
                   ),
@@ -373,11 +385,31 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(t('Άκυρο', 'Cancel'))),
             FilledButton.icon(
-              onPressed: () {
-                if (form.currentState!.validate()) Navigator.pop(ctx, true);
+              onPressed: () async {
+                if (!form.currentState!.validate()) return;
+                final details = <String, String>{
+                  t('Ακίνητο', 'Property'): widget.propertyName,
+                  t('Διαμέρισμα', 'Apartment'): '${unit['apartment_number']}',
+                  t('Χώρος', 'Unit details'): '${unit['room_count']} ${t('δωμάτια', 'rooms')} · ${unit['area_sqm']} m² · ${unit['furnished'] == true ? t('Επιπλωμένο', 'Furnished') : t('Μη επιπλωμένο', 'Unfurnished')}',
+                  t('Ιδιοκτήτης', 'Owner'): ownerName.text.trim(),
+                  t('Έγγραφο ιδιοκτήτη', 'Owner document'): '${ownerIdType == 'passport' ? t('Διαβατήριο', 'Passport') : t('Ταυτότητα', 'National ID')} · ${ownerIdCountry.text.trim()} · ${ownerIdNo.text.trim()} · ${t('λήγει', 'expires')} ${ownerIdExpiry.text}',
+                  t('Ενοικιαστής', 'Tenant'): tenantName.text.trim(),
+                  t('Email ενοικιαστή', 'Tenant email'): tenantEmail.text.trim(),
+                  t('Τηλέφωνο ενοικιαστή', 'Tenant phone'): tenantPhone.text.trim().isEmpty ? '—' : tenantPhone.text.trim(),
+                  t('Έγγραφο ενοικιαστή', 'Tenant document'): '${tenantIdType == 'passport' ? t('Διαβατήριο', 'Passport') : t('Ταυτότητα', 'National ID')} · ${tenantIdCountry.text.trim()} · ${tenantIdNumber.text.trim()} · ${t('λήγει', 'expires')} ${tenantIdExpiry.text}',
+                  t('Έναρξη – Λήξη', 'Start – End'): '${starts.text} – ${ends.text}',
+                  t('Μηνιαίο ενοίκιο', 'Monthly rent'): '€${rent.text.trim()}',
+                  t('Εγγύηση', 'Deposit'): '€${deposit.text.trim()}',
+                  t('Κοινόχρηστα ανά μήνα', 'Monthly common charges'): '€${charges.text.trim()}',
+                  t('Ημέρα πληρωμής', 'Payment due day'): '${dueDay}',
+                  t('Έπιπλα και απογραφή', 'Furniture and inventory'): '${unit['furniture_details'] ?? '—'}',
+                  t('Όροι συμφωνίας', 'Agreement terms'): terms.text.trim(),
+                };
+                final invite = await _showLeasePreview(details, unit['apartment_number'].toString());
+                if (invite == true && ctx.mounted) Navigator.of(ctx).pop(true);
               },
-              icon: const Icon(Icons.send_outlined),
-              label: Text(t('Πρόσκληση ενοικιαστή', 'Invite tenant')),
+              icon: const Icon(Icons.visibility_outlined),
+              label: Text(t('Προεπισκόπηση συμβολαίου', 'Preview contract')),
             ),
           ],
         ),
@@ -392,6 +424,7 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
           'p_owner_id_type': ownerIdType,
           'p_owner_id_country': ownerIdCountry.text.trim(),
           'p_owner_id_number': ownerIdNo.text.trim(),
+          'p_owner_id_expiry_date': ownerIdExpiry.text,
           'p_tenant_name': tenantName.text.trim(),
           'p_tenant_email': tenantEmail.text.trim().toLowerCase(),
           'p_tenant_phone_e164': tenantPhone.text.trim().isEmpty ? null : tenantPhone.text.trim(),
@@ -431,12 +464,147 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
       finally { if (mounted) setState(() => busy = false); }
     }
     for (final controller in [
-      ownerName, ownerIdNo, ownerIdCountry, tenantName, tenantEmail, tenantPhone,
+      ownerName, ownerIdNo, ownerIdCountry, ownerIdExpiry, tenantName, tenantEmail, tenantPhone,
       tenantIdCountry, tenantIdNumber, tenantIdExpiry,
       rent, deposit, charges, starts, ends, terms,
     ]) {
       controller.dispose();
     }
+  }
+
+  Future<bool?> _showLeasePreview(Map<String, String> details, String apartmentNumber) {
+    return showDialog<bool>(
+      context: context,
+      builder: (previewContext) => AlertDialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+        title: Row(children: [
+          const Icon(Icons.description_outlined),
+          const SizedBox(width: 10),
+          Expanded(child: Text(t('Προεπισκόπηση συμβολαίου', 'Contract preview'))),
+        ]),
+        content: SizedBox(
+          width: 680,
+          height: MediaQuery.sizeOf(previewContext).height * .65,
+          child: ListView(
+            children: [
+              Card(
+                color: Theme.of(previewContext).colorScheme.secondaryContainer,
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Text(t('Πρόχειρο προς έλεγχο πριν από την αποστολή', 'Draft for review before sending'), style: Theme.of(previewContext).textTheme.titleSmall),
+                ),
+              ),
+              ...details.entries.where((entry) => entry.key != t('Όροι συμφωνίας', 'Agreement terms')).map((entry) => ListTile(
+                dense: true,
+                title: Text(entry.key, style: Theme.of(previewContext).textTheme.labelMedium),
+                subtitle: SelectableText(entry.value),
+              )),
+              const Divider(),
+              Text(t('Όροι συμφωνίας', 'Agreement terms'), style: Theme.of(previewContext).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              SelectableText(details[t('Όροι συμφωνίας', 'Agreement terms')] ?? ''),
+              const SizedBox(height: 18),
+              Text(t('Η ηλεκτρονική αποδοχή καταγράφει λογαριασμό και χρόνο· δεν είναι από μόνη της πιστοποιημένη ηλεκτρονική υπογραφή.', 'Electronic acceptance records the account and time; it is not by itself a certified electronic signature.'), style: Theme.of(previewContext).textTheme.bodySmall),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(previewContext, false), child: Text(t('Επιστροφή στη φόρμα', 'Back to form'))),
+          OutlinedButton.icon(
+            onPressed: () async {
+              try {
+                await Printing.layoutPdf(
+                  onLayout: (format) => _buildLeasePdf(details, format),
+                );
+              } catch (error) {
+                if (mounted) message('${t('Δεν ήταν δυνατή η εκτύπωση', 'Could not print')}: $error');
+              }
+            },
+            icon: const Icon(Icons.print_outlined),
+            label: Text(t('Εκτύπωση', 'Print')),
+          ),
+          OutlinedButton.icon(
+            onPressed: () async {
+              try {
+                final bytes = await _buildLeasePdf(details, PdfPageFormat.a4);
+                await Printing.sharePdf(bytes: bytes, filename: 'SmartBlock-lease-$apartmentNumber.pdf');
+              } catch (error) {
+                if (mounted) message('${t('Δεν ήταν δυνατή η δημιουργία PDF', 'Could not create PDF')}: $error');
+              }
+            },
+            icon: const Icon(Icons.save_alt_outlined),
+            label: Text(t('Αποθήκευση PDF', 'Save PDF')),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(previewContext, true),
+            icon: const Icon(Icons.send_outlined),
+            label: Text(t('Αποστολή πρόσκλησης', 'Send invitation')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<Uint8List> _buildLeasePdf(Map<String, String> details, PdfPageFormat format) async {
+    final regular = await PdfGoogleFonts.notoSansRegular();
+    final bold = await PdfGoogleFonts.notoSansBold();
+    final document = pw.Document();
+    final termsLabel = t('Όροι συμφωνίας', 'Agreement terms');
+    document.addPage(pw.MultiPage(
+      pageFormat: format,
+      theme: pw.ThemeData.withFont(base: regular, bold: bold),
+      margin: const pw.EdgeInsets.all(38),
+      header: (context) => pw.Container(
+        alignment: pw.Alignment.centerRight,
+        padding: const pw.EdgeInsets.only(bottom: 10),
+        child: pw.Text('SmartBlock', style: pw.TextStyle(font: bold, fontSize: 11)),
+      ),
+      footer: (context) => pw.Container(
+        alignment: pw.Alignment.center,
+        padding: const pw.EdgeInsets.only(top: 10),
+        child: pw.Text(
+          '${context.pageNumber} / ${context.pagesCount} · ${t('Πρόχειρο προς έλεγχο', 'Draft for review')}',
+          style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
+        ),
+      ),
+      build: (context) => [
+        pw.Center(child: pw.Text(t('ΠΡΟΣΧΕΔΙΟ ΜΙΣΘΩΤΗΡΙΟΥ', 'LEASE AGREEMENT DRAFT'), style: pw.TextStyle(font: bold, fontSize: 18))),
+        pw.SizedBox(height: 18),
+        ...details.entries.where((entry) => entry.key != termsLabel).map((entry) => pw.Container(
+          padding: const pw.EdgeInsets.symmetric(vertical: 5, horizontal: 6),
+          decoration: pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey300))),
+          child: pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+            pw.SizedBox(width: 150, child: pw.Text(entry.key, style: pw.TextStyle(font: bold, fontSize: 9))),
+            pw.SizedBox(width: 8),
+            pw.Expanded(child: pw.Text(entry.value.isEmpty ? '—' : entry.value, style: const pw.TextStyle(fontSize: 9))),
+          ]),
+        )),
+        pw.SizedBox(height: 14),
+        pw.Text(termsLabel, style: pw.TextStyle(font: bold, fontSize: 12)),
+        pw.SizedBox(height: 6),
+        pw.Text(details[termsLabel] ?? '', style: const pw.TextStyle(fontSize: 10, lineSpacing: 3)),
+        pw.SizedBox(height: 44),
+        pw.Row(children: [
+          pw.Expanded(child: pw.Column(children: [
+            pw.Container(height: 1, color: PdfColors.grey700),
+            pw.SizedBox(height: 6),
+            pw.Text(t('Υπογραφή ενοικιαστή', 'Tenant signature'), style: const pw.TextStyle(fontSize: 9)),
+          ])),
+          pw.SizedBox(width: 28),
+          pw.Expanded(child: pw.Column(children: [
+            pw.Container(height: 1, color: PdfColors.grey700),
+            pw.SizedBox(height: 6),
+            pw.Text(t('Υπογραφή ιδιοκτήτη', 'Owner signature'), style: const pw.TextStyle(fontSize: 9)),
+          ])),
+        ]),
+        pw.SizedBox(height: 18),
+        pw.Text(
+          t('Το παρόν PDF είναι προσχέδιο για έλεγχο και δεν αποτελεί πιστοποιημένη ηλεκτρονική υπογραφή.', 'This PDF is a review draft and is not a certified electronic signature.'),
+          style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
+        ),
+      ],
+    ));
+    return document.save();
   }
 
   Future<void> reviewLease(Map<String, dynamic> item) async {
