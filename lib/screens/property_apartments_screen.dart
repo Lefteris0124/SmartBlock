@@ -217,9 +217,33 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
                         keyboardType: TextInputType.phone,
                         decoration: _input(t('Τηλέφωνο', 'Phone'), Icons.phone_outlined, hint: '+357…'),
                       ),
-                      Text(
-                        t('Ο ενοικιαστής θα συμπληρώσει τη χώρα και τα στοιχεία της ταυτότητας/διαβατηρίου όταν ανοίξει την πρόσκληση.', 'The tenant will enter the issuing country and identity document details after opening the invitation.'),
-                        style: Theme.of(ctx).textTheme.bodySmall,
+                      Card(
+                        color: Theme.of(ctx).colorScheme.secondaryContainer,
+                        child: Padding(
+                          padding: const EdgeInsets.all(14),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.badge_outlined),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      t('Στοιχεία ταυτότητας ή διαβατηρίου', 'ID or passport details'),
+                                      style: Theme.of(ctx).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      t('Ο ενοικιαστής θα επιλέξει ταυτότητα ή διαβατήριο και θα συμπληρώσει ο ίδιος τον αριθμό και τη χώρα έκδοσης όταν ανοίξει την πρόσκληση. Τα στοιχεία θα εμφανιστούν στον τελικό έλεγχο του συμβολαίου.', 'The tenant will choose an ID card or passport and enter its number and issuing country when opening the invitation. These details will appear in the final lease review.'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ],
                   ),
