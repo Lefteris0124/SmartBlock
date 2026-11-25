@@ -883,9 +883,103 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     return null;
   }
 
+  Future<Map<String, dynamic>> _loadLeaseTermSettings() async {
+    final value = await db.rpc('get_owner_lease_term_settings');
+    return Map<String, dynamic>.from(value as Map);
+  }
+
+  Future<Map<String, dynamic>?> _editSmartBlockLeaseTerms() async {
+    if (!isAdmin) return null;
+    final rows = await db.rpc('admin_get_smartblock_lease_terms') as List;
+    if (rows.isEmpty) return null;
+    final current = Map<String, dynamic>.from(rows.first as Map);
+    final greek = TextEditingController(text: current['terms_el']?.toString() ?? '');
+    final english = TextEditingController(text: current['terms_en']?.toString() ?? '');
+    final key = GlobalKey<FormState>();
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(gr ? 'Σταθεροί όροι SmartBlock' : 'SmartBlock fixed terms'),
+        content: SizedBox(
+          width: 560,
+          child: Form(
+            key: key,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(gr
+                      ? 'Οι όροι αυτοί κλειδώνονται σε κάθε νέο συμβόλαιο. Οι αλλαγές ισχύουν μόνο για συμβόλαια που θα δημιουργηθούν από εδώ και πέρα.'
+                      : 'These terms are locked into every new agreement. Changes apply only to agreements created from now on.'),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: greek,
+                    minLines: 4,
+                    maxLines: 10,
+                    maxLength: 10000,
+                    decoration: InputDecoration(labelText: 'Ελληνικά'),
+                    validator: (value) => (value?.trim().length ?? 0) < 20
+                        ? (gr ? 'Συμπλήρωσε τον όρο.' : 'Enter the term.')
+                        : null,
+                  ),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: english,
+                    minLines: 4,
+                    maxLines: 10,
+                    maxLength: 10000,
+                    decoration: InputDecoration(labelText: 'English'),
+                    validator: (value) => (value?.trim().length ?? 0) < 20
+                        ? (gr ? 'Συμπλήρωσε τη μετάφραση.' : 'Enter the translation.')
+                        : null,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(gr ? 'Άκυρο' : 'Cancel')),
+          FilledButton(
+            onPressed: () {
+              if (key.currentState?.validate() ?? false) Navigator.pop(ctx, true);
+            },
+            child: Text(gr ? 'Αποθήκευση όρων' : 'Save terms'),
+          ),
+        ],
+      ),
+    );
+    if (saved != true) {
+      greek.dispose();
+      english.dispose();
+      return null;
+    }
+    try {
+      await db.rpc('admin_update_smartblock_lease_terms', params: {
+        'p_terms_el': greek.text.trim(),
+        'p_terms_en': english.text.trim(),
+      });
+      message(gr ? 'Οι σταθεροί όροι ενημερώθηκαν για νέα συμβόλαια.' : 'Fixed terms updated for new agreements.');
+      return {'terms_el': greek.text.trim(), 'terms_en': english.text.trim()};
+    } on PostgrestException catch (error) {
+      message(error.message);
+      return null;
+    } finally {
+      greek.dispose();
+      english.dispose();
+    }
+  }
+
   Future<void> createRent() async {
     if (!canManageProperty) {
       message(gr ? 'Μόνο ιδιοκτήτης ή εξουσιοδοτημένος διαχειριστής μπορεί να δημιουργήσει μίσθωση.' : 'Only an owner or authorized manager can create a rental.');
+      return;
+    }
+    Map<String, dynamic> termSettings;
+    try {
+      termSettings = await _loadLeaseTermSettings();
+    } on PostgrestException catch (error) {
+      message(error.message);
       return;
     }
     final ownerName = TextEditingController(
@@ -905,11 +999,12 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     final dueDay = TextEditingController(text: '1');
     final furniture = TextEditingController();
     final services = TextEditingController();
-    final terms = TextEditingController();
+    final terms = TextEditingController(text: termSettings['owner_terms']?.toString() ?? '');
     final guarantor = TextEditingController();
     final guaranteeTerms = TextEditingController();
     final key = GlobalKey<FormState>();
     var ownerConfirmed = false;
+    var saveTermsAsDefault = false;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -961,7 +1056,59 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
                     TextFormField(controller: dueDay, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: gr ? 'Ημέρα πληρωμής κάθε μήνα (1–28)' : 'Monthly due day (1–28)'), validator: required),
                     TextFormField(controller: furniture, minLines: 2, maxLines: 4, decoration: InputDecoration(labelText: gr ? 'Έπιπλα και απογραφή' : 'Furniture and inventory')),
                     TextFormField(controller: services, minLines: 2, maxLines: 4, decoration: InputDecoration(labelText: gr ? 'Υπηρεσίες / λογαριασμοί που περιλαμβάνονται' : 'Included services / utilities')),
-                    TextFormField(controller: terms, minLines: 3, maxLines: 6, decoration: InputDecoration(labelText: gr ? 'Ειδικοί όροι συμφωνίας' : 'Additional agreed terms')),
+                    Card(
+                      color: Theme.of(ctx).colorScheme.surfaceContainerHighest,
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              gr ? 'Σταθερός όρος SmartBlock' : 'Fixed SmartBlock term',
+                              style: Theme.of(ctx).textTheme.titleSmall,
+                            ),
+                            const SizedBox(height: 6),
+                            Text((gr
+                                ? termSettings['terms_el']
+                                : termSettings['terms_en'])?.toString() ?? ''),
+                            if (isAdmin)
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: TextButton.icon(
+                                  onPressed: () async {
+                                    final updated = await _editSmartBlockLeaseTerms();
+                                    if (updated != null) setDialog(() => termSettings = {
+                                      ...termSettings,
+                                      'terms_el': updated['terms_el'],
+                                      'terms_en': updated['terms_en'],
+                                    });
+                                  },
+                                  icon: const Icon(Icons.admin_panel_settings_outlined),
+                                  label: Text(gr ? 'Αλλαγή σταθερού όρου (admin)' : 'Edit fixed term (admin)'),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    TextFormField(
+                      controller: terms,
+                      minLines: 3,
+                      maxLines: 6,
+                      maxLength: 10000,
+                      decoration: InputDecoration(
+                        labelText: gr ? 'Οι δικοί σου πρόσθετοι όροι' : 'Your additional terms',
+                        helperText: gr
+                            ? 'Οι αποθηκευμένοι προσωπικοί όροι προφορτώνονται εδώ και παραμένουν επεξεργάσιμοι για αυτό το συμβόλαιο.'
+                            : 'Your saved terms are prefilled here and remain editable for this agreement.',
+                      ),
+                    ),
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: saveTermsAsDefault,
+                      onChanged: (value) => setDialog(() => saveTermsAsDefault = value == true),
+                      title: Text(gr ? 'Αποθήκευση αυτών των όρων ως προεπιλογή στον λογαριασμό μου' : 'Save these as my account default terms'),
+                    ),
                     TextFormField(controller: guarantor, decoration: InputDecoration(labelText: gr ? 'Εγγυητής (προαιρετικό)' : 'Guarantor (optional)')),
                     TextFormField(controller: guaranteeTerms, minLines: 2, maxLines: 4, decoration: InputDecoration(labelText: gr ? 'Όροι εγγύησης (προαιρετικό)' : 'Guarantee terms (optional)')),
                     const SizedBox(height: 8),
@@ -997,6 +1144,9 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     );
     if (ok == true) {
       try {
+        if (saveTermsAsDefault) {
+          await db.rpc('save_owner_lease_terms', params: {'p_terms': terms.text.trim()});
+        }
         final result = await db.rpc('create_lease_contract_offer', params: {
           'p_property_id': widget.propertyId,
           'p_unit_reference': unit.text.trim(),
