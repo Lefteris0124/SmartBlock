@@ -39,6 +39,46 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
 
   void message(String value) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(value)));
 
+  InputDecoration _input(String label, IconData icon, {String? hint}) =>
+      InputDecoration(
+        labelText: label,
+        hintText: hint,
+        prefixIcon: Icon(icon),
+        filled: true,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+        ),
+      );
+
+  Widget _formSection(String title, IconData icon, List<Widget> fields) =>
+      Card(
+        margin: EdgeInsets.zero,
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                Icon(icon, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                ),
+              ]),
+              const SizedBox(height: 6),
+              ...fields.map((field) => Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: field,
+              )),
+            ],
+          ),
+        ),
+      );
+
+
+
   Future<void> createApartment() async {
     final number = TextEditingController(), rooms = TextEditingController(), area = TextEditingController(), furniture = TextEditingController(), comments = TextEditingController();
     final form = GlobalKey<FormState>();
@@ -67,53 +107,272 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
   }
 
   Future<void> createLease(Map<String, dynamic> unit) async {
-    final ownerName = TextEditingController(text: db.auth.currentUser?.userMetadata?['full_name']?.toString() ?? '');
-    final ownerIdNo = TextEditingController(), tenantName = TextEditingController(), tenantEmail = TextEditingController(), tenantPhone = TextEditingController();
-    final rent = TextEditingController(), deposit = TextEditingController(text: '0'), charges = TextEditingController(text: '0');
-    final starts = TextEditingController(), ends = TextEditingController();
+    final ownerName = TextEditingController(
+      text: db.auth.currentUser?.userMetadata?['full_name']?.toString() ?? '',
+    );
+    final ownerIdNo = TextEditingController();
+    final ownerIdCountry = TextEditingController();
+    final tenantName = TextEditingController();
+    final tenantEmail = TextEditingController();
+    final tenantPhone = TextEditingController();
+    final rent = TextEditingController();
+    final deposit = TextEditingController(text: '0');
+    final charges = TextEditingController(text: '0');
+    final starts = TextEditingController();
+    final ends = TextEditingController();
     final terms = TextEditingController(text: t(
-      '1. Το ενοίκιο καταβάλλεται έως την συμφωνημένη ημερομηνία.\n2. Τα κοινόχρηστα καταβάλλονται όπως αναγράφονται.\n3. Ο ενοικιαστής διατηρεί το διαμέρισμα σε καλή κατάσταση και αναφέρει έγκαιρα βλάβες.\n4. Η εγγύηση επιστρέφεται μετά τη λήξη, σύμφωνα με την κατάσταση του ακινήτου και τους εφαρμοστέους όρους.\n5. Οι πληρωμές της μίσθωσης καταγράφονται στο SmartBlock. Το SmartBlock είναι ψηφιακό κανάλι διαχείρισης και δεν αποτελεί συμβαλλόμενο μέρος.',
-      '1. Rent is paid by the agreed due date.\n2. Common charges are paid as stated.\n3. The tenant keeps the apartment in good condition and reports defects promptly.\n4. The deposit is returned at lease end subject to the property condition and applicable terms.\n5. Lease payments are recorded in SmartBlock. SmartBlock is a digital management channel and is not a party to the lease.'));
-    final form = GlobalKey<FormState>(); var ownerIdType = 'national_id'; var dueDay = 1;
-    final send = await showDialog<bool>(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx, setDialog) => AlertDialog(
-      title: Text(t('Συμβόλαιο · Διαμέρισμα ', 'Lease · Apartment ') + '${unit['apartment_number']}'),
-      content: SizedBox(width: 540, child: Form(key: form, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        TextFormField(controller: ownerName, decoration: InputDecoration(labelText: t('Ονοματεπώνυμο ιδιοκτήτη', 'Owner full name')), validator: required),
-        DropdownButtonFormField<String>(value: ownerIdType, decoration: InputDecoration(labelText: t('Έγγραφο ιδιοκτήτη', 'Owner document')), items: [DropdownMenuItem(value: 'national_id', child: Text(t('Ταυτότητα', 'National ID'))), DropdownMenuItem(value: 'passport', child: Text(t('Διαβατήριο', 'Passport')))], onChanged: (v) => setDialog(() => ownerIdType = v ?? 'national_id')),
-        TextFormField(controller: ownerIdNo, decoration: InputDecoration(labelText: t('Αριθμός εγγράφου ιδιοκτήτη', 'Owner document number')), validator: required),
-        const Divider(),
-        TextFormField(controller: tenantName, decoration: InputDecoration(labelText: t('Ονοματεπώνυμο ενοικιαστή', 'Tenant full name')), validator: required),
-        TextFormField(controller: tenantEmail, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email'), validator: (v) => (v ?? '').contains('@') ? null : t('Βάλε έγκυρο email', 'Enter a valid email')),
-        TextFormField(controller: tenantPhone, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: t('Τηλέφωνο (+357...)', 'Phone (+357...)'))),
-        TextFormField(controller: rent, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: t('Μηνιαίο ενοίκιο (€)', 'Monthly rent (€)')), validator: (v) => (double.tryParse((v ?? '').replaceAll(',', '.')) ?? 0) <= 0 ? t('Μη έγκυρο ποσό', 'Invalid amount') : null),
-        TextFormField(controller: deposit, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: t('Εγγύηση (€)', 'Deposit (€)'))),
-        TextFormField(controller: charges, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: t('Κοινόχρηστα (€ / μήνα)', 'Common charges (€ / month)'))),
-        DropdownButtonFormField<int>(value: dueDay, decoration: InputDecoration(labelText: t('Ημέρα πληρωμής ενοικίου', 'Rent due day')), items: List.generate(28, (i) => DropdownMenuItem(value: i + 1, child: Text('${i + 1}'))), onChanged: (v) => setDialog(() => dueDay = v ?? 1)),
-        TextFormField(controller: starts, readOnly: true, decoration: InputDecoration(labelText: t('Έναρξη', 'Start date'), suffixIcon: const Icon(Icons.calendar_today)), onTap: () => chooseDate(starts)),
-        TextFormField(controller: ends, readOnly: true, decoration: InputDecoration(labelText: t('Λήξη', 'End date'), suffixIcon: const Icon(Icons.calendar_today)), onTap: () => chooseDate(ends)),
-        Align(alignment: Alignment.centerLeft, child: Padding(padding: const EdgeInsets.only(top: 12), child: Text(t('Όροι συμφωνίας · επεξεργάσιμοι', 'Agreement terms · editable')))),
-        TextFormField(controller: terms, minLines: 5, maxLines: 10, validator: required),
-        Padding(padding: const EdgeInsets.only(top: 12), child: Text(t('Ο ενοικιαστής θα συμπληρώσει τα στοιχεία ταυτότητας και θα υπογράψει πρώτος. Η ηλεκτρονική αποδοχή καταγράφει λογαριασμό και χρόνο· δεν είναι από μόνη της πιστοποιημένη ηλεκτρονική υπογραφή.', 'Tenant completes ID details and signs first. Electronic acceptance records account and time; it is not by itself a certified electronic signature.'), style: Theme.of(context).textTheme.bodySmall)),
-      ])))),
-      actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(t('Άκυρο', 'Cancel'))), FilledButton.icon(onPressed: () { if (form.currentState!.validate() && starts.text.isNotEmpty && ends.text.isNotEmpty) Navigator.pop(ctx, true); }, icon: const Icon(Icons.send_outlined), label: Text(t('Πρόσκληση ενοικιαστή', 'Invite tenant')))],
-    )));
+      '1. Το ενοίκιο καταβάλλεται έως την συμφωνημένη ημερομηνία.\\n2. Τα κοινόχρηστα καταβάλλονται όπως αναγράφονται.\\n3. Ο ενοικιαστής διατηρεί το διαμέρισμα σε καλή κατάσταση και αναφέρει έγκαιρα βλάβες.\\n4. Η εγγύηση επιστρέφεται μετά τη λήξη, σύμφωνα με την κατάσταση του ακινήτου και τους εφαρμοστέους όρους.\\n5. Οι πληρωμές της μίσθωσης καταγράφονται στο SmartBlock. Το SmartBlock είναι ψηφιακό κανάλι διαχείρισης και δεν αποτελεί συμβαλλόμενο μέρος.',
+      '1. Rent is paid by the agreed due date.\\n2. Common charges are paid as stated.\\n3. The tenant keeps the apartment in good condition and reports defects promptly.\\n4. The deposit is returned at lease end subject to the property condition and applicable terms.\\n5. Lease payments are recorded in SmartBlock. SmartBlock is a digital management channel and is not a party to the lease.',
+    ));
+    final form = GlobalKey<FormState>();
+    var ownerIdType = 'national_id';
+    var dueDay = 1;
+    final send = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(t('Νέο συμβόλαιο', 'New lease')),
+              const SizedBox(height: 5),
+              Text(
+                '${t('Διαμέρισμα', 'Apartment')} ${unit['apartment_number']} · ${widget.propertyName}',
+                style: Theme.of(ctx).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                t('Συμπλήρωσε τα πεδία ανά ενότητα. Τα πεδία με * είναι απαραίτητα.', 'Complete each section. Fields marked * are required.'),
+                style: Theme.of(ctx).textTheme.bodySmall,
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 680,
+            height: MediaQuery.sizeOf(ctx).height * .68,
+            child: Form(
+              key: form,
+              child: ListView(
+                padding: const EdgeInsets.only(bottom: 8),
+                children: [
+                  _formSection(
+                    t('Στοιχεία ιδιοκτήτη', 'Owner details'),
+                    Icons.person_outline,
+                    [
+                      TextFormField(
+                        controller: ownerName,
+                        decoration: _input(t('Ονοματεπώνυμο *', 'Full name *'), Icons.badge_outlined),
+                        validator: required,
+                      ),
+                      DropdownButtonFormField<String>(
+                        value: ownerIdType,
+                        decoration: _input(t('Έγγραφο ταυτοποίησης *', 'Identity document *'), Icons.assignment_ind_outlined),
+                        items: [
+                          DropdownMenuItem(value: 'national_id', child: Text(t('Ταυτότητα', 'National ID'))),
+                          DropdownMenuItem(value: 'passport', child: Text(t('Διαβατήριο', 'Passport'))),
+                        ],
+                        onChanged: (value) => setDialog(() => ownerIdType = value ?? 'national_id'),
+                      ),
+                      TextFormField(
+                        controller: ownerIdCountry,
+                        textCapitalization: TextCapitalization.words,
+                        decoration: _input(
+                          t('Χώρα έκδοσης εγγράφου *', 'Document issuing country *'),
+                          Icons.public_outlined,
+                          hint: t('π.χ. Κύπρος', 'e.g. Cyprus'),
+                        ),
+                        validator: required,
+                      ),
+                      TextFormField(
+                        controller: ownerIdNo,
+                        decoration: _input(t('Αριθμός εγγράφου *', 'Document number *'), Icons.credit_card_outlined),
+                        validator: required,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  _formSection(
+                    t('Στοιχεία ενοικιαστή', 'Tenant details'),
+                    Icons.person_add_alt_1_outlined,
+                    [
+                      TextFormField(
+                        controller: tenantName,
+                        decoration: _input(t('Ονοματεπώνυμο *', 'Full name *'), Icons.badge_outlined),
+                        validator: required,
+                      ),
+                      TextFormField(
+                        controller: tenantEmail,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: _input('Email *', Icons.email_outlined),
+                        validator: (value) {
+                          final email = value?.trim() ?? '';
+                          return email.contains('@') && email.split('@').last.contains('.')
+                              ? null
+                              : t('Βάλε έγκυρο email', 'Enter a valid email');
+                        },
+                      ),
+                      TextFormField(
+                        controller: tenantPhone,
+                        keyboardType: TextInputType.phone,
+                        decoration: _input(t('Τηλέφωνο', 'Phone'), Icons.phone_outlined, hint: '+357…'),
+                      ),
+                      Text(
+                        t('Ο ενοικιαστής θα συμπληρώσει τη χώρα και τα στοιχεία της ταυτότητας/διαβατηρίου όταν ανοίξει την πρόσκληση.', 'The tenant will enter the issuing country and identity document details after opening the invitation.'),
+                        style: Theme.of(ctx).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  _formSection(
+                    t('Οικονομικοί όροι', 'Financial terms'),
+                    Icons.euro,
+                    [
+                      TextFormField(
+                        controller: rent,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: _input(t('Μηνιαίο ενοίκιο (€) *', 'Monthly rent (€) *'), Icons.payments_outlined),
+                        validator: (value) => (double.tryParse((value ?? '').replaceAll(',', '.')) ?? 0) <= 0
+                            ? t('Βάλε έγκυρο ποσό', 'Enter a valid amount')
+                            : null,
+                      ),
+                      TextFormField(
+                        controller: deposit,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: _input(t('Εγγύηση (€)', 'Deposit (€)'), Icons.savings_outlined),
+                        validator: (value) => (double.tryParse((value ?? '').replaceAll(',', '.')) ?? -1) < 0
+                            ? t('Το ποσό δεν είναι έγκυρο', 'Enter a valid amount')
+                            : null,
+                      ),
+                      TextFormField(
+                        controller: charges,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: _input(t('Κοινόχρηστα (€ / μήνα)', 'Common charges (€ / month)'), Icons.receipt_long_outlined),
+                        validator: (value) => (double.tryParse((value ?? '').replaceAll(',', '.')) ?? -1) < 0
+                            ? t('Το ποσό δεν είναι έγκυρο', 'Enter a valid amount')
+                            : null,
+                      ),
+                      DropdownButtonFormField<int>(
+                        value: dueDay,
+                        decoration: _input(t('Ημέρα πληρωμής ενοικίου', 'Rent due day'), Icons.event_repeat_outlined),
+                        items: List.generate(28, (index) => DropdownMenuItem(value: index + 1, child: Text('${index + 1}'))),
+                        onChanged: (value) => setDialog(() => dueDay = value ?? 1),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  _formSection(
+                    t('Διάρκεια μίσθωσης', 'Lease dates'),
+                    Icons.calendar_month_outlined,
+                    [
+                      TextFormField(
+                        controller: starts,
+                        readOnly: true,
+                        decoration: _input(t('Ημερομηνία έναρξης *', 'Start date *'), Icons.event_available_outlined),
+                        validator: required,
+                        onTap: () => chooseDate(starts),
+                      ),
+                      TextFormField(
+                        controller: ends,
+                        readOnly: true,
+                        decoration: _input(t('Ημερομηνία λήξης *', 'End date *'), Icons.event_busy_outlined),
+                        validator: (value) {
+                          if (required(value) != null) return required(value);
+                          final startDate = DateTime.tryParse(starts.text);
+                          final endDate = DateTime.tryParse(value ?? '');
+                          return startDate != null && endDate != null && endDate.isAfter(startDate)
+                              ? null
+                              : t('Η λήξη πρέπει να είναι μετά την έναρξη', 'End date must be after start date');
+                        },
+                        onTap: () => chooseDate(ends),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  _formSection(
+                    t('Όροι συμφωνίας', 'Agreement terms'),
+                    Icons.gavel_outlined,
+                    [
+                      Text(
+                        t('Οι ενδεικτικοί όροι είναι επεξεργάσιμοι πριν αποσταλεί η πρόσκληση.', 'The suggested terms can be edited before you send the invitation.'),
+                        style: Theme.of(ctx).textTheme.bodySmall,
+                      ),
+                      TextFormField(
+                        controller: terms,
+                        minLines: 6,
+                        maxLines: 12,
+                        decoration: _input(t('Όροι *', 'Terms *'), Icons.article_outlined),
+                        validator: required,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Card(
+                    color: Theme.of(ctx).colorScheme.secondaryContainer,
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.info_outline),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              t('Ο ενοικιαστής συμπληρώνει τα στοιχεία του εγγράφου ταυτοποίησης και υπογράφει πρώτος. Η ηλεκτρονική αποδοχή καταγράφει λογαριασμό και χρόνο· δεν είναι από μόνη της πιστοποιημένη ηλεκτρονική υπογραφή.', 'The tenant enters their identity document details and signs first. Electronic acceptance records the account and time; by itself, it is not a certified electronic signature.'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(t('Άκυρο', 'Cancel'))),
+            FilledButton.icon(
+              onPressed: () {
+                if (form.currentState!.validate()) Navigator.pop(ctx, true);
+              },
+              icon: const Icon(Icons.send_outlined),
+              label: Text(t('Πρόσκληση ενοικιαστή', 'Invite tenant')),
+            ),
+          ],
+        ),
+      ),
+    );
     if (send == true) {
       setState(() => busy = true);
       try {
         final result = await db.rpc('create_apartment_lease_offer', params: {
-          'p_apartment_id': unit['id'], 'p_owner_name': ownerName.text.trim(), 'p_owner_id_type': ownerIdType, 'p_owner_id_number': ownerIdNo.text.trim(),
-          'p_tenant_name': tenantName.text.trim(), 'p_tenant_email': tenantEmail.text.trim().toLowerCase(), 'p_tenant_phone_e164': tenantPhone.text.trim().isEmpty ? null : tenantPhone.text.trim(),
-          'p_monthly_rent': double.parse(rent.text.replaceAll(',', '.')), 'p_deposit_amount': double.tryParse(deposit.text.replaceAll(',', '.')) ?? 0,
-          'p_common_charges': double.tryParse(charges.text.replaceAll(',', '.')) ?? 0, 'p_start_date': starts.text, 'p_end_date': ends.text, 'p_rent_due_day': dueDay,
+          'p_apartment_id': unit['id'],
+          'p_owner_name': ownerName.text.trim(),
+          'p_owner_id_type': ownerIdType,
+          'p_owner_id_country': ownerIdCountry.text.trim(),
+          'p_owner_id_number': ownerIdNo.text.trim(),
+          'p_tenant_name': tenantName.text.trim(),
+          'p_tenant_email': tenantEmail.text.trim().toLowerCase(),
+          'p_tenant_phone_e164': tenantPhone.text.trim().isEmpty ? null : tenantPhone.text.trim(),
+          'p_monthly_rent': double.parse(rent.text.replaceAll(',', '.')),
+          'p_deposit_amount': double.tryParse(deposit.text.replaceAll(',', '.')) ?? 0,
+          'p_common_charges': double.tryParse(charges.text.replaceAll(',', '.')) ?? 0,
+          'p_start_date': starts.text,
+          'p_end_date': ends.text,
+          'p_rent_due_day': dueDay,
           'p_furniture_and_inventory': '${unit['furnished'] == true ? t('Επιπλωμένο', 'Furnished') : t('Μη επιπλωμένο', 'Unfurnished')}: ${unit['furniture_details'] ?? ''}',
-          'p_included_services': '', 'p_special_terms': terms.text.trim(), 'p_guarantor_name': '', 'p_guarantor_terms': '', 'p_owner_confirm': true,
+          'p_included_services': '',
+          'p_special_terms': terms.text.trim(),
+          'p_guarantor_name': '',
+          'p_guarantor_terms': '',
+          'p_owner_confirm': true,
         });
         final response = Map<String, dynamic>.from(result as Map);
         final token = response['token'] as String;
         final offerId = response['offer_id'] as String;
         final url = Uri.https('lefteris0124.github.io', '/SmartBlock/', {'lease_invite': token});
         final subject = Uri.encodeComponent(t('Πρόσκληση για το μισθωτήριο SmartBlock', 'SmartBlock lease invitation'));
-        final body = Uri.encodeComponent(t('Γεια σας ${tenantName.text.trim()},\n\nΟ ιδιοκτήτης σάς προσκαλεί να δείτε και να υπογράψετε ηλεκτρονικά το μισθωτήριο για το διαμέρισμα ${unit['apartment_number']}. Συνδεθείτε/εγγραφείτε με το email ${tenantEmail.text.trim()} από τον σύνδεσμο:\n$url\n\nΑφού υπογράψετε, το συμβόλαιο θα επιστρέψει στον ιδιοκτήτη για τελική έγκριση.', 'Hello ${tenantName.text.trim()},\n\nThe owner invites you to review and sign the lease for apartment ${unit['apartment_number']}. Sign up or log in with ${tenantEmail.text.trim()} using this link:\n$url\n\nAfter signing, the lease returns to the owner for final approval.'));
+        final body = Uri.encodeComponent(t('Γεια σας ${tenantName.text.trim()},\\n\\nΟ ιδιοκτήτης σάς προσκαλεί να δείτε και να υπογράψετε ηλεκτρονικά το μισθωτήριο για το διαμέρισμα ${unit['apartment_number']}. Συνδεθείτε/εγγραφείτε με το email ${tenantEmail.text.trim()} από τον σύνδεσμο:\\n$url\\n\\nΑφού υπογράψετε, το συμβόλαιο θα επιστρέψει στον ιδιοκτήτη για τελική έγκριση.', 'Hello ${tenantName.text.trim()},\\n\\nThe owner invites you to review and sign the lease for apartment ${unit['apartment_number']}. Sign up or log in with ${tenantEmail.text.trim()} using this link:\\n$url\\n\\nAfter signing, the lease returns to the owner for final approval.'));
         final mail = Uri(scheme: 'mailto', path: tenantEmail.text.trim(), query: 'subject=$subject&body=$body');
         try {
           await db.functions.invoke('send-lease-invitation', body: {'offer_id': offerId, 'token': token});
@@ -126,7 +385,12 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
       } catch (e) { message('$e'); }
       finally { if (mounted) setState(() => busy = false); }
     }
-    for (final c in [ownerName, ownerIdNo, tenantName, tenantEmail, tenantPhone, rent, deposit, charges, starts, ends, terms]) { c.dispose(); }
+    for (final controller in [
+      ownerName, ownerIdNo, ownerIdCountry, tenantName, tenantEmail, tenantPhone,
+      rent, deposit, charges, starts, ends, terms,
+    ]) {
+      controller.dispose();
+    }
   }
 
   Future<void> reviewLease(Map<String, dynamic> item) async {
