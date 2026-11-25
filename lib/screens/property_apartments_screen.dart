@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -6,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:country_picker/country_picker.dart';
 
 class PropertyApartmentsScreen extends StatefulWidget {
   const PropertyApartmentsScreen({required this.propertyId, required this.propertyName, required this.isGreek, super.key});
@@ -83,6 +85,46 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
 
 
 
+  Widget _countryPickerField({
+    required BuildContext fieldContext,
+    required TextEditingController controller,
+    required String label,
+  }) => FormField<String>(
+    initialValue: controller.text,
+    validator: required,
+    builder: (fieldState) => InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => showCountryPicker(
+        context: fieldContext,
+        countryListTheme: CountryListThemeData(
+          bottomSheetHeight: MediaQuery.sizeOf(fieldContext).height * .72,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          inputDecoration: InputDecoration(
+            labelText: t('Αναζήτηση χώρας', 'Search countries'),
+            prefixIcon: const Icon(Icons.search),
+          ),
+        ),
+        onSelect: (country) {
+          controller.text = country.name;
+          fieldState.didChange(country.name);
+        },
+      ),
+      child: InputDecorator(
+        decoration: _input(label, Icons.public_outlined).copyWith(
+          suffixIcon: const Icon(Icons.arrow_drop_down),
+          errorText: fieldState.errorText,
+        ),
+        child: Text(
+          controller.text.isEmpty
+              ? t('Επίλεξε χώρα', 'Select a country')
+              : controller.text,
+          style: Theme.of(fieldContext).textTheme.bodyLarge,
+        ),
+      ),
+    ),
+  );
+
+
   Future<void> createApartment() async {
     final number = TextEditingController(), rooms = TextEditingController(), area = TextEditingController(), furniture = TextEditingController(), comments = TextEditingController();
     final form = GlobalKey<FormState>();
@@ -136,6 +178,8 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
     var ownerIdType = 'national_id';
     var tenantIdType = 'national_id';
     var dueDay = 1;
+    final tenantSuggestions = <Map<String, dynamic>>[];
+    Timer? tenantLookupTimer;
     final send = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -183,15 +227,10 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
                         ],
                         onChanged: (value) => setDialog(() => ownerIdType = value ?? 'national_id'),
                       ),
-                      TextFormField(
+                      _countryPickerField(
+                        fieldContext: ctx,
                         controller: ownerIdCountry,
-                        textCapitalization: TextCapitalization.words,
-                        decoration: _input(
-                          t('Χώρα έκδοσης εγγράφου *', 'Document issuing country *'),
-                          Icons.public_outlined,
-                          hint: t('π.χ. Κύπρος', 'e.g. Cyprus'),
-                        ),
-                        validator: required,
+                        label: t('Χώρα έκδοσης εγγράφου *', 'Document issuing country *'),
                       ),
                       TextFormField(
                         controller: ownerIdNo,
@@ -227,7 +266,62 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
                               ? null
                               : t('Βάλε έγκυρο email', 'Enter a valid email');
                         },
+                        onChanged: (value) {
+                          tenantLookupTimer?.cancel();
+                          final query = value.trim();
+                          setDialog(() => tenantSuggestions.clear());
+                          if (query.length < 2) return;
+                          tenantLookupTimer = Timer(const Duration(milliseconds: 300), () async {
+                            try {
+                              final response = await db.rpc(
+                                'search_owner_tenant_suggestions',
+                                params: {'p_search': query},
+                              );
+                              if (!ctx.mounted || tenantEmail.text.trim().toLowerCase() != query.toLowerCase()) return;
+                              setDialog(() {
+                                tenantSuggestions
+                                  ..clear()
+                                  ..addAll(List<Map<String, dynamic>>.from(response));
+                              });
+                            } catch (_) {
+                              if (ctx.mounted) setDialog(() => tenantSuggestions.clear());
+                            }
+                          });
+                        },
                       ),
+                      if (tenantSuggestions.isNotEmpty)
+                        Card(
+                          margin: const EdgeInsets.only(top: 4),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+                                child: Text(
+                                  t('Προηγούμενοι ενοικιαστές', 'Previous tenants'),
+                                  style: Theme.of(ctx).textTheme.labelLarge,
+                                ),
+                              ),
+                              ...tenantSuggestions.map((person) => ListTile(
+                                leading: const Icon(Icons.history),
+                                title: Text(person['tenant_name']?.toString().trim().isNotEmpty == true
+                                    ? person['tenant_name'].toString()
+                                    : person['tenant_email'].toString()),
+                                subtitle: Text(person['tenant_email']?.toString() ?? ''),
+                                onTap: () {
+                                  tenantEmail.text = person['tenant_email']?.toString() ?? '';
+                                  if (tenantName.text.trim().isEmpty) {
+                                    tenantName.text = person['tenant_name']?.toString() ?? '';
+                                  }
+                                  if (tenantPhone.text.trim().isEmpty) {
+                                    tenantPhone.text = person['tenant_phone_e164']?.toString() ?? '';
+                                  }
+                                  setDialog(() => tenantSuggestions.clear());
+                                },
+                              )),
+                            ],
+                          ),
+                        ),
                       TextFormField(
                         controller: tenantPhone,
                         keyboardType: TextInputType.phone,
@@ -242,11 +336,10 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
                         ],
                         onChanged: (value) => setDialog(() => tenantIdType = value ?? 'national_id'),
                       ),
-                      TextFormField(
+                      _countryPickerField(
+                        fieldContext: ctx,
                         controller: tenantIdCountry,
-                        textCapitalization: TextCapitalization.words,
-                        decoration: _input(t('Χώρα έκδοσης εγγράφου *', 'Document issuing country *'), Icons.public_outlined, hint: t('π.χ. Κύπρος', 'e.g. Cyprus')),
-                        validator: required,
+                        label: t('Χώρα έκδοσης εγγράφου *', 'Document issuing country *'),
                       ),
                       TextFormField(
                         controller: tenantIdNumber,
@@ -415,6 +508,7 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
         ),
       ),
     );
+    tenantLookupTimer?.cancel();
     if (send == true) {
       setState(() => busy = true);
       try {
