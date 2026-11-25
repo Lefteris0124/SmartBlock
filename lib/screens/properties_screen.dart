@@ -76,6 +76,42 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
           await query.order('created_at', ascending: false),
         ),
       );
+
+      // If an owner has an individual property linked to a unit record,
+      // show its apartment number and parent building in the asset list.
+      final apartmentIds = rows
+          .map((property) => property['apartment_id'] as String?)
+          .whereType<String>()
+          .toSet()
+          .toList();
+      if (apartmentIds.isNotEmpty) {
+        try {
+          final units = List<Map<String, dynamic>>.from(
+            await _client
+                .from('apartments')
+                .select(
+                  'id, apartment_number, building:buildings(name, address, city)',
+                )
+                .inFilter('id', apartmentIds),
+          );
+          final unitsById = {
+            for (final unit in units) unit['id'].toString(): unit,
+          };
+          for (final property in rows) {
+            final unit = unitsById[property['apartment_id']?.toString()];
+            if (unit == null) continue;
+            property['_linked_apartment_number'] = unit['apartment_number'];
+            final building = unit['building'];
+            if (building is Map) {
+              property['_linked_building_name'] = building['name'];
+              property['_linked_building_address'] = building['address'];
+              property['_linked_building_city'] = building['city'];
+            }
+          }
+        } catch (_) {
+          // Keep the property list usable if legacy building details are unavailable.
+        }
+      }
     }
     final fullAccessPropertyIds = rows
         .map((property) => property['id'] as String)
@@ -943,6 +979,14 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
                                   .where((s) => s.isNotEmpty)
                                   .join(' · ')
                             : [
+                                    if (p['_linked_apartment_number'] != null)
+                                      '${_greek ? 'Διαμέρισμα' : 'Apartment'} ${p['_linked_apartment_number']}',
+                                    if (p['_linked_building_name'] != null)
+                                      '${_greek ? 'Πολυκατοικία' : 'Building'}: ${p['_linked_building_name']}',
+                                    if (p['_linked_building_address'] != null)
+                                      p['_linked_building_address'],
+                                    if (p['_linked_building_city'] != null)
+                                      p['_linked_building_city'],
                                     _propertyTypeLabel(
                                       p['property_type'] as String?,
                                       p['other_description'] as String?,
