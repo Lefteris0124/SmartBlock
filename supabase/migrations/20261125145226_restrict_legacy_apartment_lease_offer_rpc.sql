@@ -1,0 +1,1 @@
+revoke all on function public.create_apartment_lease_offer(uuid,text,text,text,text,text,text,numeric,numeric,numeric,date,date,integer,text,text,text,text,text,boolean) from public, anon, authenticated;
