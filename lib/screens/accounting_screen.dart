@@ -21,6 +21,9 @@ class _AccountingScreenState extends State<AccountingScreen>{
   List<Map<String,dynamic>> customerStatements=[];
   List<Map<String,dynamic>> receipts=[];
   List<Map<String,dynamic>> journals=[];
+  List<Map<String,dynamic>> ownerFinancialRows=[];
+  String ownerPropertyFilter='all';
+  String ownerPeriodFilter='current';
   int year=DateTime.now().year;
   @override
   void initState(){super.initState();greek=SmartBlockLanguageController.instance.selected.value.isGreek;refresh();}
@@ -37,6 +40,22 @@ class _AccountingScreenState extends State<AccountingScreen>{
       }
       else {
         statements=List<Map<String,dynamic>>.from(await db.rpc('my_accounting_customer_statements') as List);
+        final selectedYear = ownerPeriodFilter == 'all'
+            ? null
+            : (ownerPeriodFilter == 'current'
+                ? DateTime.now().year
+                : int.tryParse(ownerPeriodFilter));
+        ownerFinancialRows=List<Map<String,dynamic>>.from(
+          await db.rpc('my_owner_property_financial_summary',params:{
+            'p_property_id':null,
+            'p_from':selectedYear==null?null:date(DateTime(selectedYear,1,1)),
+            'p_to':selectedYear==null?null:date(DateTime(selectedYear,12,31)),
+          }) as List,
+        );
+        if(ownerPropertyFilter!='all' &&
+            !ownerFinancialRows.any((r)=>r['property_id'].toString()==ownerPropertyFilter)){
+          ownerPropertyFilter='all';
+        }
       }
       error=null;
     }catch(e){error=e.toString();}
@@ -173,9 +192,145 @@ class _AccountingScreenState extends State<AccountingScreen>{
       ],
     ));
   }
+  Widget _ownerFinanceMetric(String label,dynamic value,IconData icon)=>SizedBox(
+    width:150,
+    child:Card(
+      color:Theme.of(context).colorScheme.surfaceContainerHighest,
+      child:Padding(
+        padding:const EdgeInsets.all(12),
+        child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+          Icon(icon,color:Theme.of(context).colorScheme.primary),
+          const SizedBox(height:8),
+          Text(label,style:Theme.of(context).textTheme.bodySmall),
+          const SizedBox(height:4),
+          Text(money(value),style:Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight:FontWeight.w700)),
+        ]),
+      ),
+    ),
+  );
+
+  Widget ownerFinancialOverview(){
+    if(ownerFinancialRows.isEmpty){
+      return Card(child:Padding(
+        padding:const EdgeInsets.all(16),
+        child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+          Text(greek?'Οικονομική εικόνα ιδιοκτητών':'Owner financial overview',
+            style:Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height:8),
+          Text(greek
+            ?'Δεν υπάρχουν ακόμη οικονομικά στοιχεία για ακίνητα συνδεδεμένα με τον λογαριασμό σου.'
+            :'There are no financial records yet for properties linked to your owner account.'),
+        ]),
+      ));
+    }
+    final visible=ownerPropertyFilter=='all'
+        ? ownerFinancialRows
+        : ownerFinancialRows.where((r)=>r['property_id'].toString()==ownerPropertyFilter).toList();
+    double total(String key)=>visible.fold<double>(0,(sum,row)=>sum+((row[key] as num?)?.toDouble()??0));
+    final propertyItems=<DropdownMenuItem<String>>[
+      DropdownMenuItem(value:'all',child:Text(greek?'Όλα τα ακίνητα':'All properties')),
+      ...ownerFinancialRows.map((row)=>DropdownMenuItem(
+        value:row['property_id'].toString(),
+        child:Text((row['property_name']??(greek?'Ακίνητο':'Property')).toString(),
+          overflow:TextOverflow.ellipsis),
+      )),
+    ];
+    final periodItems=<DropdownMenuItem<String>>[
+      DropdownMenuItem(value:'current',child:Text(greek?'Τρέχον έτος':'Current year')),
+      DropdownMenuItem(value:'all',child:Text(greek?'Όλη η περίοδος':'All time')),
+      for(var y=DateTime.now().year-1;y>=DateTime.now().year-5;y--)
+        DropdownMenuItem(value:'$y',child:Text('$y')),
+    ];
+    return Card(
+      child:Padding(
+        padding:const EdgeInsets.all(16),
+        child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+          Text(greek?'Αναλυτικά οικονομικά ακινήτων':'Property financial breakdown',
+            style:Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height:6),
+          Text(greek
+            ?'Τα ποσά υπολογίζονται με βάση το ποσοστό ιδιοκτησίας σου. Τα έξοδα δείχνουν εγκεκριμένες και πληρωμένες καταχωρίσεις.'
+            :'Amounts are allocated using your ownership share. Expenses reflect approved and paid records.'),
+          const SizedBox(height:12),
+          Wrap(spacing:12,runSpacing:8,children:[
+            SizedBox(width:260,child:DropdownButtonFormField<String>(
+              value:ownerPropertyFilter,
+              decoration:InputDecoration(
+                labelText:greek?'Φίλτρο ακινήτου':'Property filter',
+                prefixIcon:const Icon(Icons.home_work_outlined),
+              ),
+              items:propertyItems,
+              onChanged:(value){
+                if(value==null)return;
+                setState(()=>ownerPropertyFilter=value);
+              },
+            )),
+            SizedBox(width:220,child:DropdownButtonFormField<String>(
+              value:ownerPeriodFilter,
+              decoration:InputDecoration(
+                labelText:greek?'Περίοδος':'Period',
+                prefixIcon:const Icon(Icons.calendar_month_outlined),
+              ),
+              items:periodItems,
+              onChanged:(value){
+                if(value==null)return;
+                setState(()=>ownerPeriodFilter=value);
+                refresh();
+              },
+            )),
+          ]),
+          const SizedBox(height:12),
+          if(visible.isNotEmpty) Wrap(spacing:4,runSpacing:4,children:[
+            _ownerFinanceMetric(greek?'Ενοίκια εισπραχθέντα':'Rent collected',total('rent_collected_gross'),Icons.payments_outlined),
+            _ownerFinanceMetric(greek?'Προμήθεια SmartBlock':'SmartBlock fees',total('smartblock_fee'),Icons.percent),
+            _ownerFinanceMetric(greek?'Καθαρά ενοίκια':'Net rent',total('rent_net_to_property'),Icons.account_balance_wallet_outlined),
+            _ownerFinanceMetric(greek?'Βλάβες / επισκευές':'Repairs',total('repairs_paid'),Icons.build_outlined),
+            _ownerFinanceMetric(greek?'Συντηρήσεις':'Maintenance',total('maintenance_paid'),Icons.handyman_outlined),
+            _ownerFinanceMetric(greek?'Άλλα έξοδα':'Other expenses',total('other_expenses_paid'),Icons.receipt_long_outlined),
+            _ownerFinanceMetric(greek?'Σύνολο πληρωμένων εξόδων':'Total paid expenses',total('total_expenses_paid'),Icons.money_off_outlined),
+            _ownerFinanceMetric(greek?'Καθαρό μετά τα έξοδα':'Net after expenses',total('rent_net_to_property')-total('total_expenses_paid'),Icons.savings_outlined),
+            _ownerFinanceMetric(greek?'Έξοδα εγκεκριμένα σε αναμονή':'Approved expenses pending',total('approved_expenses_pending'),Icons.pending_actions_outlined),
+            _ownerFinanceMetric(greek?'Αποδόσεις ολοκληρωμένες':'Payouts paid',total('owner_payout_paid'),Icons.check_circle_outline),
+            _ownerFinanceMetric(greek?'Αποδόσεις σε αναμονή':'Payouts pending',total('owner_payout_pending'),Icons.outbox_outlined),
+          ]),
+          const SizedBox(height:8),
+          ...visible.map((row){
+            final property=(row['property_name']??(greek?'Ακίνητο':'Property')).toString();
+            final address=(row['property_address']??'').toString();
+            return ExpansionTile(
+              leading:const Icon(Icons.apartment_outlined),
+              title:Text(property),
+              subtitle:Text([
+                if(address.isNotEmpty)address,
+                '${greek?'Μερίδιο':'Share'}: ${((row['ownership_percent'] as num?)?.toDouble()??0).toStringAsFixed(2)}%',
+                '${greek?'Ενοίκια':'Rent'}: ${money(row['rent_collected_gross'])}',
+              ].join(' · ')),
+              children:[
+                for(final item in <(String,String)>[
+                  (greek?'Ενοίκια που εισπράχθηκαν':'Gross rent collected','rent_collected_gross'),
+                  (greek?'Προμήθεια SmartBlock':'SmartBlock fee','smartblock_fee'),
+                  (greek?'Καθαρό μερίδιο ενοικίων':'Net rent share','rent_net_to_property'),
+                  (greek?'Βλάβες και επισκευές που πληρώθηκαν':'Repairs paid','repairs_paid'),
+                  (greek?'Συντηρήσεις που πληρώθηκαν':'Maintenance paid','maintenance_paid'),
+                  (greek?'Άλλα έξοδα που πληρώθηκαν':'Other expenses paid','other_expenses_paid'),
+                  (greek?'Σύνολο πληρωμένων εξόδων':'Total paid expenses','total_expenses_paid'),
+                  (greek?'Εγκεκριμένα έξοδα σε αναμονή πληρωμής':'Approved expenses pending','approved_expenses_pending'),
+                  (greek?'Ποσά που αποδόθηκαν':'Payouts paid','owner_payout_paid'),
+                  (greek?'Ποσά προς απόδοση':'Payouts pending','owner_payout_pending'),
+                ])
+                  ListTile(title:Text(item.$1),trailing:Text(money(row[item.$2]))),
+              ],
+            );
+          }),
+        ]),
+      ),
+    );
+  }
+
   Widget accountView()=>ListView(padding:const EdgeInsets.all(16),children:[
     Text(greek?'Οι ενοποιημένες καταστάσεις μου':'My consolidated statements',style:Theme.of(context).textTheme.headlineSmall),
     Text(greek?'Μία κατάσταση ανά μήνα, συγκεντρωμένη για όλα τα ακίνητα και τις μονάδες του λογαριασμού σου.':'One statement per month, consolidated across all properties and units linked to your account.'),
+    ownerFinancialOverview(),
     if(statements.isEmpty)Card(child:Padding(padding:const EdgeInsets.all(20),child:Text(greek?'Δεν υπάρχει ακόμη διαθέσιμη κατάσταση.':'No statement available yet.'))),
     ...statements.map((s){
       final data=Map<String,dynamic>.from((s['statement_data'] as Map?)??const {});
