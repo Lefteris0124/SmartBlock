@@ -18,6 +18,11 @@ class _AdminBillingScreenState extends State<AdminBillingScreen> {
   late Future<void> _load;
   DateTime _effectiveDate = DateTime.now().add(const Duration(days: 1));
   List<Map<String, dynamic>> _schedules = [];
+  List<Map<String, dynamic>> _availableTargets = [];
+  final Set<String> _selectedTargetIds = {};
+  Map<String, String> _targetLabels = {};
+  String _scopeType = 'all';
+  bool _loadingTargets = false;
   bool _saving = false;
   bool get _greek =>
       SmartBlockLanguageController.instance.selected.value.isGreek;
@@ -39,22 +44,160 @@ class _AdminBillingScreenState extends State<AdminBillingScreen> {
       '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
   Future<void> _refresh() async {
-    final current = await _db.rpc('smartblock_current_billing_rates');
-    final rows = List<Map<String, dynamic>>.from(
-      await _db.rpc('admin_list_smartblock_billing_schedules') as List,
-    );
+    final results = await Future.wait([
+      _db.rpc('smartblock_current_billing_rates'),
+      _db.rpc('admin_list_smartblock_billing_schedules'),
+      _db.rpc('admin_list_smartblock_billing_targets', params: {'p_scope_type': 'users'}),
+      _db.rpc('admin_list_smartblock_billing_targets', params: {'p_scope_type': 'properties'}),
+    ]);
     if (!mounted) return;
-    final rate = (current as List).first as Map<String, dynamic>;
+    final current = results[0] as List;
+    final rows = List<Map<String, dynamic>>.from(results[1] as List);
+    final userTargets = List<Map<String, dynamic>>.from(results[2] as List);
+    final propertyTargets = List<Map<String, dynamic>>.from(results[3] as List);
+    final labels = <String, String>{};
+    for (final target in userTargets) {
+      labels['users:${target['target_id']}'] = target['display_name']?.toString() ?? '';
+    }
+    for (final target in propertyTargets) {
+      labels['properties:${target['target_id']}'] = target['display_name']?.toString() ?? '';
+    }
+    final rate = current.first as Map<String, dynamic>;
     final scheduledRows = rows
-        .where((row) => row['status'] == 'scheduled')
+        .where((row) => row['status'] == 'scheduled' && (row['scope_type']?.toString() ?? 'all') == 'all')
         .toList();
     final nextRate = scheduledRows.isNotEmpty ? scheduledRows.first : rate;
-    _monthlyRate.text = ((nextRate['apartment_monthly_eur'] as num).toDouble())
-        .toStringAsFixed(2);
-    _paymentPercent.text =
-        ((nextRate['online_payment_fee_percent'] as num).toDouble())
-            .toStringAsFixed(2);
-    setState(() => _schedules = rows);
+    _monthlyRate.text = ((nextRate['apartment_monthly_eur'] as num).toDouble()).toStringAsFixed(2);
+    _paymentPercent.text = ((nextRate['online_payment_fee_percent'] as num).toDouble()).toStringAsFixed(2);
+    setState(() {
+      _schedules = rows;
+      _targetLabels = labels;
+      _availableTargets = _scopeType == 'users' ? userTargets : propertyTargets;
+    });
+  }
+
+  Future<void> _setScope(String scope) async {
+    setState(() {
+      _scopeType = scope;
+      _selectedTargetIds.clear();
+      _availableTargets = [];
+      _loadingTargets = scope != 'all';
+    });
+    if (scope == 'all') return;
+    try {
+      final rows = List<Map<String, dynamic>>.from(
+        await _db.rpc('admin_list_smartblock_billing_targets', params: {'p_scope_type': scope}) as List,
+      );
+      if (!mounted || _scopeType != scope) return;
+      setState(() {
+        _availableTargets = rows;
+        _loadingTargets = false;
+      });
+    } on PostgrestException catch (error) {
+      if (!mounted) return;
+      setState(() => _loadingTargets = false);
+      _message(error.message);
+    }
+  }
+
+  Future<void> _pickTargets() async {
+    if (_loadingTargets || _availableTargets.isEmpty) return;
+    final search = TextEditingController();
+    final selected = Set<String>.from(_selectedTargetIds);
+    final result = await showDialog<Set<String>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          final query = search.text.trim().toLowerCase();
+          final filtered = _availableTargets.where((target) {
+            final name = target['display_name']?.toString().toLowerCase() ?? '';
+            final detail = target['detail']?.toString().toLowerCase() ?? '';
+            return query.isEmpty || name.contains(query) || detail.contains(query);
+          }).toList();
+          return AlertDialog(
+            title: Text(_scopeType == 'users'
+                ? (_greek ? 'Επιλογή λογαριασμών ιδιοκτητών' : 'Select owner accounts')
+                : (_greek ? 'Επιλογή πολυκατοικιών' : 'Select buildings')),
+            content: SizedBox(
+              width: double.maxFinite,
+              height: 440,
+              child: Column(
+                children: [
+                  TextField(
+                    controller: search,
+                    decoration: InputDecoration(
+                      prefixIcon: const Icon(Icons.search),
+                      hintText: _greek ? 'Αναζήτηση' : 'Search',
+                    ),
+                    onChanged: (_) => setDialogState(() {}),
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: filtered.isEmpty
+                        ? Center(child: Text(_greek ? 'Δεν βρέθηκαν αποτελέσματα.' : 'No matches found.'))
+                        : ListView.builder(
+                            itemCount: filtered.length,
+                            itemBuilder: (context, index) {
+                              final target = filtered[index];
+                              final id = target['target_id'].toString();
+                              return CheckboxListTile(
+                                value: selected.contains(id),
+                                onChanged: (checked) => setDialogState(() {
+                                  if (checked == true) {
+                                    selected.add(id);
+                                  } else {
+                                    selected.remove(id);
+                                  }
+                                }),
+                                title: Text(target['display_name']?.toString() ?? ''),
+                                subtitle: target['detail']?.toString().isNotEmpty == true
+                                    ? Text(target['detail'].toString())
+                                    : null,
+                                controlAffinity: ListTileControlAffinity.leading,
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: Text(_greek ? 'Άκυρο' : 'Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, selected),
+                child: Text(_greek ? 'Επιλογή (${selected.length})' : 'Select (${selected.length})'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    search.dispose();
+    if (result != null && mounted) {
+      setState(() {
+        _selectedTargetIds
+          ..clear()
+          ..addAll(result);
+      });
+    }
+  }
+
+  String _scopeDescription(Map<String, dynamic> row) {
+    final scope = row['scope_type']?.toString() ?? 'all';
+    if (scope == 'all') return _greek ? 'Όλοι οι ιδιοκτήτες' : 'All owners';
+    final ids = List<String>.from(row['scope_ids'] as List? ?? const []);
+    final names = ids
+        .map((id) => _targetLabels['$scope:$id'])
+        .whereType<String>()
+        .where((name) => name.isNotEmpty)
+        .toList();
+    final title = scope == 'users'
+        ? (_greek ? 'Λογαριασμοί' : 'Owner accounts')
+        : (_greek ? 'Πολυκατοικίες' : 'Buildings');
+    return '$title: ${names.isEmpty ? ids.length : names.join(', ')}';
   }
 
   Future<void> _pickDate() async {
@@ -71,6 +214,10 @@ class _AdminBillingScreenState extends State<AdminBillingScreen> {
   Future<void> _scheduleChange() async {
     final monthly = double.tryParse(_monthlyRate.text.replaceAll(',', '.'));
     final percent = double.tryParse(_paymentPercent.text.replaceAll(',', '.'));
+    if (_scopeType != 'all' && _selectedTargetIds.isEmpty) {
+      _message(_greek ? 'Επίλεξε τουλάχιστον έναν λογαριασμό ή πολυκατοικία.' : 'Select at least one account or building.');
+      return;
+    }
     if (monthly == null ||
         monthly < 0 ||
         percent == null ||
@@ -91,6 +238,8 @@ class _AdminBillingScreenState extends State<AdminBillingScreen> {
           'p_apartment_monthly_eur': monthly,
           'p_online_payment_fee_percent': percent,
           'p_effective_on': _date(_effectiveDate),
+          'p_scope_type': _scopeType,
+          'p_scope_ids': _scopeType == 'all' ? <String>[] : _selectedTargetIds.toList(),
         },
       );
       final details = (result as List).first as Map<String, dynamic>;
@@ -157,6 +306,48 @@ class _AdminBillingScreenState extends State<AdminBillingScreen> {
                   ? 'Η μηνιαία τιμή αφορά κάθε διαμέρισμα πολυκατοικίας. Η προμήθεια αφαιρείται από το ποσό που αποδίδεται στο ακίνητο.'
                   : 'The monthly rate applies to each apartment in a building. The payment fee is deducted from the amount paid to the property.',
             ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              value: _scopeType,
+              decoration: InputDecoration(
+                labelText: _greek ? 'Εφαρμογή αλλαγής σε' : 'Apply change to',
+                prefixIcon: const Icon(Icons.tune_outlined),
+              ),
+              items: [
+                DropdownMenuItem(value: 'all', child: Text(_greek ? 'Όλους τους ιδιοκτήτες' : 'All owners')),
+                DropdownMenuItem(value: 'users', child: Text(_greek ? 'Επιλεγμένους λογαριασμούς ιδιοκτητών' : 'Selected owner accounts')),
+                DropdownMenuItem(value: 'properties', child: Text(_greek ? 'Επιλεγμένες πολυκατοικίες' : 'Selected buildings')),
+              ],
+              onChanged: _saving ? null : (value) {
+                if (value != null) _setScope(value);
+              },
+            ),
+            if (_scopeType != 'all') ...[
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: _loadingTargets ? null : _pickTargets,
+                icon: _loadingTargets
+                    ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.checklist_outlined),
+                label: Text(_loadingTargets
+                    ? (_greek ? 'Φόρτωση επιλογών…' : 'Loading options…')
+                    : _greek
+                        ? 'Επιλογή ${_scopeType == 'users' ? 'λογαριασμών' : 'πολυκατοικιών'} (${_selectedTargetIds.length})'
+                        : 'Choose ${_scopeType == 'users' ? 'accounts' : 'buildings'} (${_selectedTargetIds.length})'),
+              ),
+              if (_selectedTargetIds.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    _selectedTargetIds
+                        .map((id) => _targetLabels['$_scopeType:$id'] ?? id)
+                        .take(4)
+                        .join(', ') +
+                        (_selectedTargetIds.length > 4 ? ' …' : ''),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+            ],
             const SizedBox(height: 16),
             TextField(
               controller: _monthlyRate,
@@ -239,7 +430,7 @@ class _AdminBillingScreenState extends State<AdminBillingScreen> {
                         '${row['effective_on']} · €${row['apartment_monthly_eur']} / ${_greek ? 'διαμέρισμα / μήνα' : 'apartment / month'}',
                       ),
                       subtitle: Text(
-                        '${_greek ? 'Ποσοστό εικονικών πολυκατοικιών' : 'Virtual building fee'}: ${row['online_payment_fee_percent']}% · $status',
+                        '${_scopeDescription(row)}\n${_greek ? 'Ποσοστό online πληρωμής' : 'Online payment fee'}: ${row['online_payment_fee_percent']}% · $status',
                       ),
                       trailing:
                           row['status'] == 'scheduled' &&
