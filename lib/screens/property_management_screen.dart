@@ -1431,8 +1431,32 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
           text: DateTime.now().toIso8601String().substring(0, 10),
         ),
         notes = TextEditingController();
+    var category = 'other';
     final ok = await _formDialog(gr ? 'Νέο έξοδο' : 'New expense', [
       _field(desc, gr ? 'Περιγραφή' : 'Description', validator: _required),
+      DropdownButtonFormField<String>(
+        value: category,
+        decoration: InputDecoration(
+          labelText: gr ? 'Κατηγορία εξόδου' : 'Expense category',
+        ),
+        items: [
+          DropdownMenuItem(
+            value: 'damage_repair',
+            child: Text(gr ? 'Βλάβη / επισκευή' : 'Damage / repair'),
+          ),
+          DropdownMenuItem(
+            value: 'maintenance',
+            child: Text(gr ? 'Συντήρηση' : 'Maintenance'),
+          ),
+          DropdownMenuItem(
+            value: 'other',
+            child: Text(gr ? 'Άλλο έξοδο' : 'Other expense'),
+          ),
+        ],
+        onChanged: (value) {
+          if (value != null) category = value;
+        },
+      ),
       _field(
         amount,
         gr ? 'Ποσό (€)' : 'Amount (€)',
@@ -1453,6 +1477,7 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
     ]);
     if (ok)
       await _insert('property_operating_expenses', {
+        'category': category,
         'description': desc.text.trim(),
         'amount': double.parse(amount.text.replaceAll(',', '.')),
         'supplier': supplier.text.trim(),
