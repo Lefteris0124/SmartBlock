@@ -19,6 +19,7 @@ class _LeaseContractOfferScreenState extends State<LeaseContractOfferScreen> {
   final _name = TextEditingController();
   final _idNumber = TextEditingController();
   final _idCountry = TextEditingController();
+  final _idExpiry = TextEditingController();
   String _idTypeValue = 'national_id';
   bool _confirmed = false;
   bool _saving = false;
@@ -38,6 +39,7 @@ class _LeaseContractOfferScreenState extends State<LeaseContractOfferScreen> {
     _name.dispose();
     _idNumber.dispose();
     _idCountry.dispose();
+    _idExpiry.dispose();
     super.dispose();
   }
 
@@ -46,7 +48,36 @@ class _LeaseContractOfferScreenState extends State<LeaseContractOfferScreen> {
       'get_lease_contract_offer',
       params: {'p_token': widget.token},
     );
-    return Map<String, dynamic>.from(value as Map);
+    final offer = Map<String, dynamic>.from(value as Map);
+    if (_idNumber.text.isEmpty) {
+      final storedType = offer['tenant_id_type']?.toString();
+      if (storedType == 'national_id' || storedType == 'passport') _idTypeValue = storedType!;
+      _idCountry.text = offer['tenant_id_country']?.toString() ?? '';
+      _idNumber.text = offer['tenant_id_number']?.toString() ?? '';
+      _idExpiry.text = offer['tenant_id_expiry_date']?.toString() ?? '';
+    }
+    return offer;
+  }
+
+  bool _validFutureDate(String value) {
+    final date = DateTime.tryParse(value);
+    final now = DateTime.now();
+    return date != null && !date.isBefore(DateTime(now.year, now.month, now.day));
+  }
+
+  Future<void> _chooseExpiryDate() async {
+    final now = DateTime.now();
+    final stored = DateTime.tryParse(_idExpiry.text);
+    final date = await showDatePicker(
+      context: context,
+      initialDate: stored == null || stored.isBefore(now) ? now : stored,
+      firstDate: DateTime(now.year, now.month, now.day),
+      lastDate: DateTime(now.year + 30),
+    );
+    if (date != null) {
+      _idExpiry.text = '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+      setState(() {});
+    }
   }
 
   String _date(dynamic value) {
@@ -79,12 +110,13 @@ class _LeaseContractOfferScreenState extends State<LeaseContractOfferScreen> {
     if (_saving || !_confirmed) return;
     if (_name.text.trim().length < 3 ||
         _idCountry.text.trim().isEmpty ||
-        _idNumber.text.trim().isEmpty) {
+        _idNumber.text.trim().isEmpty ||
+        !_validFutureDate(_idExpiry.text)) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(_greek
-              ? 'Συμπλήρωσε ονοματεπώνυμο, χώρα έκδοσης και αριθμό εγγράφου.'
-              : 'Enter your full name, issuing country, and document number.'),
+              ? 'Συμπλήρωσε ονοματεπώνυμο, χώρα έκδοσης, αριθμό και ημερομηνία λήξης εγγράφου.'
+              : 'Enter your full name, issuing country, document number, and expiry date.'),
         ),
       );
       return;
@@ -99,6 +131,7 @@ class _LeaseContractOfferScreenState extends State<LeaseContractOfferScreen> {
           'p_tenant_id_type': _idTypeValue,
           'p_tenant_id_country': _idCountry.text.trim(),
           'p_tenant_id_number': _idNumber.text.trim(),
+          'p_tenant_id_expiry_date': _idExpiry.text,
           'p_confirm': true,
         },
       );
@@ -316,8 +349,24 @@ class _LeaseContractOfferScreenState extends State<LeaseContractOfferScreen> {
                           TextField(
                             controller: _idNumber,
                             decoration: InputDecoration(
-                              labelText: _greek ? 'Αριθμός ταυτότητας / διαβατηρίου' : 'ID or passport number',
+                              labelText: _greek ? 'Αριθμός ταυτότητας / διαβατηρίου *' : 'ID or passport number *',
                               prefixIcon: const Icon(Icons.credit_card_outlined),
+                              filled: true,
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _idExpiry,
+                            readOnly: true,
+                            onTap: _chooseExpiryDate,
+                            decoration: InputDecoration(
+                              labelText: _greek ? 'Ημερομηνία λήξης εγγράφου *' : 'Document expiry date *',
+                              hintText: 'YYYY-MM-DD',
+                              helperText: _greek ? 'Το έγγραφο πρέπει να ισχύει κατά την ημερομηνία υπογραφής.' : 'The document must be valid on the signing date.',
+                              prefixIcon: const Icon(Icons.event_busy_outlined),
+                              filled: true,
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                             ),
                           ),
                           const SizedBox(height: 8),
