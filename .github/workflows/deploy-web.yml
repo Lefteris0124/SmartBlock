@@ -52,6 +52,8 @@ jobs:
         with:
           path: build/web
           name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Allow Pages artifact metadata to propagate
+        run: sleep 15
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
