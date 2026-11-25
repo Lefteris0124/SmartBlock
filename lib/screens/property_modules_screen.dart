@@ -2407,6 +2407,131 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     ];
   }
 
+  Future<void> _manageLeaseTerms() async {
+    if (!canManageProperty) return;
+    Map<String, dynamic> settings;
+    try {
+      settings = await _loadLeaseTermSettings();
+    } on PostgrestException catch (error) {
+      message(error.message);
+      return;
+    }
+    final personal = TextEditingController(
+      text: settings['owner_terms']?.toString() ?? '',
+    );
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialog) => AlertDialog(
+          title: Text(gr ? 'Πρότυποι όροι μίσθωσης' : 'Default rental terms'),
+          content: SizedBox(
+            width: 560,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(gr
+                      ? 'Οι προσωπικοί σου όροι αποθηκεύονται στον λογαριασμό και προφορτώνονται σε κάθε νέο συμβόλαιο. Μπορείς να τους προσαρμόσεις πριν από την αποστολή.'
+                      : 'Your personal terms are saved to your account and prefilled in each new agreement. You can still tailor them before sending.'),
+                  const SizedBox(height: 12),
+                  Card(
+                    color: Theme.of(dialogContext).colorScheme.surfaceContainerHighest,
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(gr ? 'Σταθερός όρος SmartBlock' : 'Fixed SmartBlock term',
+                              style: Theme.of(dialogContext).textTheme.titleSmall),
+                          const SizedBox(height: 6),
+                          Text((gr ? settings['terms_el'] : settings['terms_en'])
+                                  ?.toString() ??
+                              ''),
+                          if (isAdmin)
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: TextButton.icon(
+                                onPressed: () async {
+                                  final updated = await _editSmartBlockLeaseTerms();
+                                  if (updated != null) {
+                                    setDialog(() => settings = {
+                                          ...settings,
+                                          'terms_el': updated['terms_el'],
+                                          'terms_en': updated['terms_en'],
+                                        });
+                                  }
+                                },
+                                icon: const Icon(Icons.admin_panel_settings_outlined),
+                                label: Text(gr
+                                    ? 'Αλλαγή σταθερού όρου (admin)'
+                                    : 'Edit fixed term (admin)'),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: personal,
+                    minLines: 5,
+                    maxLines: 12,
+                    maxLength: 10000,
+                    decoration: InputDecoration(
+                      labelText: gr ? 'Οι πρόσθετοι όροι μου' : 'My additional terms',
+                      hintText: gr
+                          ? 'Πρόσθεσε όρους που θέλεις να εμφανίζονται σε κάθε νέο συμβόλαιο.'
+                          : 'Add terms you want included in each new agreement.',
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(gr ? 'Κλείσιμο' : 'Close'),
+            ),
+            FilledButton.icon(
+              onPressed: () async {
+                try {
+                  await db.rpc('save_owner_lease_terms',
+                      params: {'p_terms': personal.text.trim()});
+                  if (mounted) {
+                    Navigator.pop(dialogContext);
+                    message(gr
+                        ? 'Οι προεπιλεγμένοι όροι αποθηκεύτηκαν.'
+                        : 'Default terms saved.');
+                  }
+                } on PostgrestException catch (error) {
+                  message(error.message);
+                }
+              },
+              icon: const Icon(Icons.save_outlined),
+              label: Text(gr ? 'Αποθήκευση όρων' : 'Save terms'),
+            ),
+          ],
+        ),
+      ),
+    );
+    personal.dispose();
+  }
+
+  Widget _leaseTermsCard() => Card(
+    child: ListTile(
+      leading: const Icon(Icons.description_outlined),
+      title: Text(gr ? 'Όροι συμβολαίων' : 'Agreement terms'),
+      subtitle: Text(gr
+          ? 'Πρότυποι προσωπικοί όροι και σταθεροί όροι SmartBlock'
+          : 'Personal defaults and fixed SmartBlock terms'),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: _manageLeaseTerms,
+    ),
+  );
+
   Widget rentListing() => FutureBuilder<List<Map<String, dynamic>>>(
     future: _rentData(),
     builder: (context, snapshot) {
@@ -2417,14 +2542,24 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
       final offers = records.where((row) => row['_lease_offer'] == true).toList();
       final contracts = records.where((row) => row['_lease_offer'] != true).toList();
       if (records.isEmpty && canManageProperty) {
-        return emptyState(
-          icon: Icons.key_outlined,
-          title: gr ? 'Δεν υπάρχουν μισθώσεις ακόμη' : 'No rental agreements yet',
-          description: gr
-              ? 'Δημιούργησε συμβόλαιο και στείλε ασφαλή πρόσκληση στον ενοικιαστή.'
-              : 'Create an agreement and send a secure invitation to the tenant.',
-          action: gr ? 'Νέο συμβόλαιο' : 'New agreement',
-          onPressed: createRent,
+        return Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: _leaseTermsCard(),
+            ),
+            Expanded(
+              child: emptyState(
+                icon: Icons.key_outlined,
+                title: gr ? 'Δεν υπάρχουν μισθώσεις ακόμη' : 'No rental agreements yet',
+                description: gr
+                    ? 'Δημιούργησε συμβόλαιο και στείλε ασφαλή πρόσκληση στον ενοικιαστή.'
+                    : 'Create an agreement and send a secure invitation to the tenant.',
+                action: gr ? 'Νέο συμβόλαιο' : 'New agreement',
+                onPressed: createRent,
+              ),
+            ),
+          ],
         );
       }
       if (records.isEmpty) {
@@ -2440,6 +2575,7 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            if (canManageProperty) _leaseTermsCard(),
             if (offers.isNotEmpty) ...[
               Padding(
                 padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
