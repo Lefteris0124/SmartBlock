@@ -18,7 +18,7 @@ class _LeaseContractOfferScreenState extends State<LeaseContractOfferScreen> {
   late Future<Map<String, dynamic>> _offer = _loadOffer();
   final _name = TextEditingController();
   final _idNumber = TextEditingController();
-  final _idCountry = TextEditingController(text: 'Cyprus');
+  final _idCountry = TextEditingController();
   String _idTypeValue = 'national_id';
   bool _confirmed = false;
   bool _saving = false;
@@ -77,6 +77,18 @@ class _LeaseContractOfferScreenState extends State<LeaseContractOfferScreen> {
 
   Future<void> _accept() async {
     if (_saving || !_confirmed) return;
+    if (_name.text.trim().length < 3 ||
+        _idCountry.text.trim().isEmpty ||
+        _idNumber.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_greek
+              ? 'Συμπλήρωσε ονοματεπώνυμο, χώρα έκδοσης και αριθμό εγγράφου.'
+              : 'Enter your full name, issuing country, and document number.'),
+        ),
+      );
+      return;
+    }
     setState(() => _saving = true);
     try {
       await _db.rpc(
@@ -195,8 +207,8 @@ class _LeaseContractOfferScreenState extends State<LeaseContractOfferScreen> {
                         _item(_greek ? 'Διαμέρισμα' : 'Apartment', offer['unit_reference']),
                         _item(_greek ? 'Ιδιοκτήτης' : 'Owner',
                             '${offer['owner_name']} · ${offer['owner_email']}'),
-                        _item(_greek ? 'Στοιχεία ταυτότητας ιδιοκτήτη' : 'Owner identity',
-                            '${offer['owner_id_type']} · ${offer['owner_id_number']}'),
+                        _item(_greek ? 'Έγγραφο ταυτοποίησης ιδιοκτήτη' : 'Owner identity document',
+                            '${offer['owner_id_type']} · ${offer['owner_id_country'] ?? '—'} · ${offer['owner_id_number']}'),
                         _item(_greek ? 'Ενοικιαστής' : 'Tenant',
                             '${offer['tenant_name']} · ${offer['tenant_email']}'),
                         _item(_greek ? 'Μηνιαίο ενοίκιο' : 'Monthly rent', '$rent $currency',
@@ -284,7 +296,22 @@ class _LeaseContractOfferScreenState extends State<LeaseContractOfferScreen> {
                             onChanged: (value) => setState(() => _idTypeValue = value ?? 'national_id'),
                           ),
                           const SizedBox(height: 12),
-                          TextField(controller: _idCountry, decoration: InputDecoration(labelText: _greek ? 'Χώρα έκδοσης' : 'Issuing country', prefixIcon: const Icon(Icons.public_outlined))),
+                          TextField(
+                            controller: _idCountry,
+                            textCapitalization: TextCapitalization.words,
+                            decoration: InputDecoration(
+                              labelText: _greek
+                                  ? 'Χώρα έκδοσης ${_idTypeValue == 'passport' ? 'διαβατηρίου' : 'ταυτότητας'} *'
+                                  : 'Country that issued the ${_idTypeValue == 'passport' ? 'passport' : 'ID'} *',
+                              hintText: _greek ? 'π.χ. Κύπρος' : 'e.g. Cyprus',
+                              helperText: _greek
+                                  ? 'Η χώρα που εξέδωσε το έγγραφο, όχι η χώρα κατοικίας.'
+                                  : 'The issuing country, not your country of residence.',
+                              prefixIcon: const Icon(Icons.public_outlined),
+                              filled: true,
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                          ),
                           const SizedBox(height: 12),
                           TextField(
                             controller: _idNumber,
