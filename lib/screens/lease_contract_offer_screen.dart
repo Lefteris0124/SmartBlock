@@ -241,7 +241,7 @@ class _LeaseContractOfferScreenState extends State<LeaseContractOfferScreen> {
                         _item(_greek ? 'Ιδιοκτήτης' : 'Owner',
                             '${offer['owner_name']} · ${offer['owner_email']}'),
                         _item(_greek ? 'Έγγραφο ταυτοποίησης ιδιοκτήτη' : 'Owner identity document',
-                            '${offer['owner_id_type']} · ${offer['owner_id_country'] ?? '—'} · ${offer['owner_id_number']}'),
+                            '${offer['owner_id_type']} · ${offer['owner_id_country'] ?? '—'} · ${offer['owner_id_number']} · ${_greek ? 'λήγει' : 'expires'} ${_date(offer['owner_id_expiry_date'])}'),
                         _item(_greek ? 'Ενοικιαστής' : 'Tenant',
                             '${offer['tenant_name']} · ${offer['tenant_email']}'),
                         _item(_greek ? 'Μηνιαίο ενοίκιο' : 'Monthly rent', '$rent $currency',
