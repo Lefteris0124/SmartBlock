@@ -329,20 +329,37 @@ class _LeaseContractOfferScreenState extends State<LeaseContractOfferScreen> {
                             onChanged: (value) => setState(() => _idTypeValue = value ?? 'national_id'),
                           ),
                           const SizedBox(height: 12),
-                          TextField(
-                            controller: _idCountry,
-                            textCapitalization: TextCapitalization.words,
-                            decoration: InputDecoration(
-                              labelText: _greek
-                                  ? 'Χώρα έκδοσης ${_idTypeValue == 'passport' ? 'διαβατηρίου' : 'ταυτότητας'} *'
-                                  : 'Country that issued the ${_idTypeValue == 'passport' ? 'passport' : 'ID'} *',
-                              hintText: _greek ? 'π.χ. Κύπρος' : 'e.g. Cyprus',
-                              helperText: _greek
-                                  ? 'Η χώρα που εξέδωσε το έγγραφο, όχι η χώρα κατοικίας.'
-                                  : 'The issuing country, not your country of residence.',
-                              prefixIcon: const Icon(Icons.public_outlined),
-                              filled: true,
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                          InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () => showCountryPicker(
+                              context: context,
+                              countryListTheme: CountryListThemeData(
+                                bottomSheetHeight: MediaQuery.sizeOf(context).height * .72,
+                                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                                inputDecoration: InputDecoration(
+                                  labelText: _greek ? 'Αναζήτηση χώρας' : 'Search countries',
+                                  prefixIcon: const Icon(Icons.search),
+                                ),
+                              ),
+                              onSelect: (country) => setState(() => _idCountry.text = country.name),
+                            ),
+                            child: InputDecorator(
+                              decoration: InputDecoration(
+                                labelText: _greek
+                                    ? 'Χώρα έκδοσης ${_idTypeValue == 'passport' ? 'διαβατηρίου' : 'ταυτότητας'} *'
+                                    : 'Country that issued the ${_idTypeValue == 'passport' ? 'passport' : 'ID'} *',
+                                helperText: _greek
+                                    ? 'Η χώρα που εξέδωσε το έγγραφο, όχι η χώρα κατοικίας.'
+                                    : 'The issuing country, not your country of residence.',
+                                prefixIcon: const Icon(Icons.public_outlined),
+                                suffixIcon: const Icon(Icons.arrow_drop_down),
+                                border: const OutlineInputBorder(),
+                              ),
+                              child: Text(
+                                _idCountry.text.isEmpty
+                                    ? (_greek ? 'Επίλεξε χώρα' : 'Select a country')
+                                    : _idCountry.text,
+                              ),
                             ),
                           ),
                           const SizedBox(height: 12),
