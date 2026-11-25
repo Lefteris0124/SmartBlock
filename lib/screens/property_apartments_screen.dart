@@ -115,6 +115,9 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
     final tenantName = TextEditingController();
     final tenantEmail = TextEditingController();
     final tenantPhone = TextEditingController();
+    final tenantIdCountry = TextEditingController();
+    final tenantIdNumber = TextEditingController();
+    final tenantIdExpiry = TextEditingController();
     final rent = TextEditingController();
     final deposit = TextEditingController(text: '0');
     final charges = TextEditingController(text: '0');
@@ -126,6 +129,7 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
     ));
     final form = GlobalKey<FormState>();
     var ownerIdType = 'national_id';
+    var tenantIdType = 'national_id';
     var dueDay = 1;
     final send = await showDialog<bool>(
       context: context,
@@ -217,6 +221,33 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
                         keyboardType: TextInputType.phone,
                         decoration: _input(t('Τηλέφωνο', 'Phone'), Icons.phone_outlined, hint: '+357…'),
                       ),
+                      DropdownButtonFormField<String>(
+                        value: tenantIdType,
+                        decoration: _input(t('Έγγραφο ταυτοποίησης *', 'Identity document *'), Icons.badge_outlined),
+                        items: [
+                          DropdownMenuItem(value: 'national_id', child: Text(t('Ταυτότητα', 'National ID'))),
+                          DropdownMenuItem(value: 'passport', child: Text(t('Διαβατήριο', 'Passport'))),
+                        ],
+                        onChanged: (value) => setDialog(() => tenantIdType = value ?? 'national_id'),
+                      ),
+                      TextFormField(
+                        controller: tenantIdCountry,
+                        textCapitalization: TextCapitalization.words,
+                        decoration: _input(t('Χώρα έκδοσης εγγράφου *', 'Document issuing country *'), Icons.public_outlined, hint: t('π.χ. Κύπρος', 'e.g. Cyprus')),
+                        validator: required,
+                      ),
+                      TextFormField(
+                        controller: tenantIdNumber,
+                        decoration: _input(t('Αριθμός εγγράφου *', 'Document number *'), Icons.credit_card_outlined),
+                        validator: (value) => (value?.trim().length ?? 0) < 3 ? t('Συμπλήρωσε έγκυρο αριθμό εγγράφου', 'Enter a valid document number') : null,
+                      ),
+                      TextFormField(
+                        controller: tenantIdExpiry,
+                        readOnly: true,
+                        decoration: _input(t('Ημερομηνία λήξης εγγράφου *', 'Document expiry date *'), Icons.event_busy_outlined, hint: 'YYYY-MM-DD'),
+                        validator: (value) => validFutureDate(value) ? null : t('Η ημερομηνία λήξης πρέπει να είναι στο μέλλον', 'Expiry date must be in the future'),
+                        onTap: () => chooseDate(tenantIdExpiry),
+                      ),
                       Card(
                         color: Theme.of(ctx).colorScheme.secondaryContainer,
                         child: Padding(
@@ -224,23 +255,9 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Icon(Icons.badge_outlined),
+                              const Icon(Icons.info_outline),
                               const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      t('Στοιχεία ταυτότητας ή διαβατηρίου', 'ID or passport details'),
-                                      style: Theme.of(ctx).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      t('Ο ενοικιαστής θα επιλέξει ταυτότητα ή διαβατήριο και θα συμπληρώσει ο ίδιος τον αριθμό και τη χώρα έκδοσης όταν ανοίξει την πρόσκληση. Τα στοιχεία θα εμφανιστούν στον τελικό έλεγχο του συμβολαίου.', 'The tenant will choose an ID card or passport and enter its number and issuing country when opening the invitation. These details will appear in the final lease review.'),
-                                    ),
-                                  ],
-                                ),
-                              ),
+                              Expanded(child: Text(t('Ο ενοικιαστής θα ελέγξει και θα επιβεβαιώσει αυτά τα στοιχεία όταν ανοίξει την πρόσκληση.', 'The tenant will review and confirm these details when opening the invitation.'))),
                             ],
                           ),
                         ),
@@ -378,6 +395,10 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
           'p_tenant_name': tenantName.text.trim(),
           'p_tenant_email': tenantEmail.text.trim().toLowerCase(),
           'p_tenant_phone_e164': tenantPhone.text.trim().isEmpty ? null : tenantPhone.text.trim(),
+          'p_tenant_id_type': tenantIdType,
+          'p_tenant_id_country': tenantIdCountry.text.trim(),
+          'p_tenant_id_number': tenantIdNumber.text.trim(),
+          'p_tenant_id_expiry_date': tenantIdExpiry.text,
           'p_monthly_rent': double.parse(rent.text.replaceAll(',', '.')),
           'p_deposit_amount': double.tryParse(deposit.text.replaceAll(',', '.')) ?? 0,
           'p_common_charges': double.tryParse(charges.text.replaceAll(',', '.')) ?? 0,
@@ -411,6 +432,7 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
     }
     for (final controller in [
       ownerName, ownerIdNo, ownerIdCountry, tenantName, tenantEmail, tenantPhone,
+      tenantIdCountry, tenantIdNumber, tenantIdExpiry,
       rent, deposit, charges, starts, ends, terms,
     ]) {
       controller.dispose();
@@ -430,7 +452,7 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
           Text('${offer['tenant_name']} · ${offer['tenant_email']}'),
           Text('${offer['start_date']} – ${offer['end_date']}'),
           Text('${t('Ενοίκιο','Rent')}: €${offer['monthly_rent']} · ${t('Εγγύηση','Deposit')}: €${offer['deposit_amount']} · ${t('Κοινόχρηστα','Common charges')}: €${offer['common_charges']}'),
-          Text('${t('Ταυτότητα ενοικιαστή','Tenant ID')}: ${offer['tenant_id_type']} · ${offer['tenant_id_country']} · ${offer['tenant_id_number']}'),
+          Text('${t('Έγγραφο ενοικιαστή','Tenant document')}: ${offer['tenant_id_type']} · ${offer['tenant_id_country']} · ${offer['tenant_id_number']} · ${offer['tenant_id_expiry_date']}'),
           Text('${t('Έγγραφο ιδιοκτήτη','Owner ID')}: ${offer['owner_id_type']} · ${offer['owner_id_country']} · ${offer['owner_id_number']}'),
           const SizedBox(height: 10), Text(offer['special_terms']?.toString() ?? ''),
           TextField(controller: signer, decoration: InputDecoration(labelText: t('Το ονοματεπώνυμό σου για υπογραφή','Your full name for signature'))),
@@ -450,6 +472,11 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
   }
 
   String? required(String? v) => (v?.trim().isEmpty ?? true) ? t('Υποχρεωτικό πεδίο', 'Required') : null;
+  bool validFutureDate(String? value) {
+    final parsed = DateTime.tryParse(value ?? '');
+    final today = DateTime.now();
+    return parsed != null && !parsed.isBefore(DateTime(today.year, today.month, today.day));
+  }
   Future<void> chooseDate(TextEditingController c) async {
     final now = DateTime.now(); final date = await showDatePicker(context: context, initialDate: now, firstDate: DateTime(now.year - 2), lastDate: DateTime(now.year + 20));
     if (date != null) c.text = '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
