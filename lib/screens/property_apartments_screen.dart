@@ -407,6 +407,7 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
           Text('${offer['start_date']} – ${offer['end_date']}'),
           Text('${t('Ενοίκιο','Rent')}: €${offer['monthly_rent']} · ${t('Εγγύηση','Deposit')}: €${offer['deposit_amount']} · ${t('Κοινόχρηστα','Common charges')}: €${offer['common_charges']}'),
           Text('${t('Ταυτότητα ενοικιαστή','Tenant ID')}: ${offer['tenant_id_type']} · ${offer['tenant_id_country']} · ${offer['tenant_id_number']}'),
+          Text('${t('Έγγραφο ιδιοκτήτη','Owner ID')}: ${offer['owner_id_type']} · ${offer['owner_id_country']} · ${offer['owner_id_number']}'),
           const SizedBox(height: 10), Text(offer['special_terms']?.toString() ?? ''),
           TextField(controller: signer, decoration: InputDecoration(labelText: t('Το ονοματεπώνυμό σου για υπογραφή','Your full name for signature'))),
           CheckboxListTile(value: confirmed, onChanged: (v) => setDialog(() => confirmed = v ?? false), title: Text(t('Επισκόπησα το υπογεγραμμένο συμβόλαιο και το εγκρίνω.','I reviewed and approve the tenant-signed lease.'))),
