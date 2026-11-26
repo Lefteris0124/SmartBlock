@@ -252,6 +252,9 @@ class _ResidentServiceRequestsScreenState
     var priority = 'normal';
     var serviceId = '';
     var serviceCategory = initialCategory;
+    final categoryServices = services
+        .where((service) => service['service_category'] == serviceCategory)
+        .toList();
     var apartmentNumber = widget.apartmentNumber;
     final title = TextEditingController();
     final description = TextEditingController();
@@ -402,7 +405,6 @@ class _ResidentServiceRequestsScreenState
                               setDialog(() => priority = value);
                           },
                         ),
-                        final categoryServices = services.where((service) => service['service_category'] == serviceCategory).toList();
                         if (categoryServices.isNotEmpty) ...[
                           const SizedBox(height: 12),
                           DropdownButtonFormField<String>(
