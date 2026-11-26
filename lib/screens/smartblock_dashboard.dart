@@ -1156,20 +1156,6 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
                   ),
                 ),
               ),
-            if (showResident)
-              _RoleCard(
-                icon: Icons.home_outlined,
-                title: _greek ? 'Ένοικος' : 'Resident',
-                detail: _greek
-                    ? 'Το διαμέρισμά σου, αναφορές βλαβών και αιτήματα υπηρεσιών.'
-                    : 'Your apartment, problem reports and service requests.',
-                onTap: () => _open(
-                  PropertiesScreen(
-                    isGreek: _greek,
-                    viewMode: PropertiesViewMode.resident,
-                  ),
-                ),
-              ),
             if (needsRoleRequest)
               Card(
                 child: ListTile(
