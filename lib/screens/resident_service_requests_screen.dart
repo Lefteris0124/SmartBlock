@@ -172,14 +172,14 @@ class _ResidentServiceRequestsScreenState
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(10),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
                   CircleAvatar(
-                    radius: 20,
+                    radius: 18,
                     child: Icon(_serviceCategoryIcon(category)),
                   ),
                   const Spacer(),
@@ -190,7 +190,7 @@ class _ResidentServiceRequestsScreenState
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Text(
                 _serviceCategoryLabel(category),
                 maxLines: 2,
@@ -203,7 +203,7 @@ class _ResidentServiceRequestsScreenState
               Expanded(
                 child: Text(
                   _serviceCategoryDescription(category),
-                  maxLines: 3,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
@@ -701,27 +701,36 @@ class _ResidentServiceRequestsScreenState
         ),
       ),
       const SizedBox(height: 12),
-      GridView.count(
-        crossAxisCount: 2,
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        crossAxisSpacing: 8,
-        mainAxisSpacing: 8,
-        childAspectRatio: 1.08,
-        children: [
-          for (final category in const [
-            'plumbing','building_work','electrical','furniture_assembly',
-            'painting','cleaning','safety','other',
-          ])
-            _serviceCategoryCard(
-              category,
-              false,
-              () => setState(() {
-                _selectedCategory = category;
-                _selectedMode = 'menu';
-              }),
-            ),
-        ],
+      LayoutBuilder(
+        builder: (context, constraints) {
+          final columns = constraints.maxWidth >= 1000
+              ? 4
+              : constraints.maxWidth >= 680
+                  ? 3
+                  : 2;
+          return GridView.count(
+            crossAxisCount: columns,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisSpacing: 8,
+            mainAxisSpacing: 8,
+            childAspectRatio: columns == 2 ? 1.24 : 1.34,
+            children: [
+              for (final category in const [
+                'plumbing','building_work','electrical','furniture_assembly',
+                'painting','cleaning','safety','other',
+              ])
+                _serviceCategoryCard(
+                  category,
+                  false,
+                  () => setState(() {
+                    _selectedCategory = category;
+                    _selectedMode = 'menu';
+                  }),
+                ),
+            ],
+          );
+        },
       ),
     ],
   );
