@@ -37,6 +37,8 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _focusKey = GlobalKey();
   bool _focusScheduled = false;
+  DateTime _calendarMonth = DateTime(DateTime.now().year, DateTime.now().month);
+  DateTime _selectedCalendarDay = DateUtils.dateOnly(DateTime.now());
   final TextEditingController _authorizationLimitController =
       TextEditingController();
 
@@ -135,6 +137,13 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
           .select()
           .eq('property_id', widget.propertyId)
           .maybeSingle(),
+      db.from('property_calendar_events').select().eq('property_id', widget.propertyId).order('starts_at'),
+      db.from('property_tasks').select().eq('property_id', widget.propertyId).order('due_on', nullsFirst: false),
+      db.from('property_management_audit')
+          .select('id,actor_display_name,action,entity_type,entity_id,details,created_at')
+          .eq('property_id', widget.propertyId)
+          .order('created_at', ascending: false)
+          .limit(50),
     ]);
     return {
       'contracts': List<Map<String, dynamic>>.from(values[0]),
@@ -151,7 +160,339 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
       'charge_entries': List<Map<String, dynamic>>.from(values[11]),
       'residents': List<Map<String, dynamic>>.from(values[12]),
       'management_policy': values[13] as Map<String, dynamic>?,
+      'calendar_events': List<Map<String, dynamic>>.from(values[14]),
+      'tasks': List<Map<String, dynamic>>.from(values[15]),
+      'activity': List<Map<String, dynamic>>.from(values[16]),
     };
+  }
+
+  String _calendarDateKey(DateTime date) =>
+      '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
+  String _calendarDateLabel(DateTime date) =>
+      '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+
+  Future<void> _newCalendarEvent() async {
+    final title = TextEditingController();
+    final description = TextEditingController();
+    var eventType = 'maintenance';
+    var date = DateUtils.dateOnly(DateTime.now().add(const Duration(days: 1)));
+    var allDay = true;
+    var time = const TimeOfDay(hour: 9, minute: 0);
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: Text(gr ? 'Νέα εκδήλωση' : 'New calendar event'),
+          content: SizedBox(
+            width: 440,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * .65),
+              child: SingleChildScrollView(child: Form(
+                key: _formKey,
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  _field(title, gr ? 'Τίτλος' : 'Title', validator: _required),
+                  _field(description, gr ? 'Σημειώσεις' : 'Notes', lines: 3),
+                  DropdownButtonFormField<String>(
+                    initialValue: eventType,
+                    decoration: InputDecoration(labelText: gr ? 'Κατηγορία' : 'Category'),
+                    items: [
+                      DropdownMenuItem(value: 'inspection', child: Text(gr ? 'Έλεγχος / επιθεώρηση' : 'Inspection')),
+                      DropdownMenuItem(value: 'maintenance', child: Text(gr ? 'Συντήρηση' : 'Maintenance')),
+                      DropdownMenuItem(value: 'service', child: Text(gr ? 'Εργασία / υπηρεσία' : 'Work / service')),
+                      DropdownMenuItem(value: 'payment_deadline', child: Text(gr ? 'Προθεσμία πληρωμής' : 'Payment deadline')),
+                      DropdownMenuItem(value: 'meeting', child: Text(gr ? 'Συνάντηση' : 'Meeting')),
+                      DropdownMenuItem(value: 'other', child: Text(gr ? 'Άλλο' : 'Other')),
+                    ],
+                    onChanged: (v) { if (v != null) setDialog(() => eventType = v); },
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.calendar_month_outlined),
+                    title: Text(gr ? 'Ημερομηνία' : 'Date'),
+                    subtitle: Text(_calendarDateLabel(date)),
+                    onTap: () async {
+                      final chosen = await showDatePicker(context: ctx, initialDate: date,
+                        firstDate: DateTime.now().subtract(const Duration(days: 365)),
+                        lastDate: DateTime.now().add(const Duration(days: 3650)));
+                      if (chosen != null) setDialog(() => date = DateUtils.dateOnly(chosen));
+                    },
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(gr ? 'Ολοήμερο' : 'All day'),
+                    value: allDay,
+                    onChanged: (v) => setDialog(() => allDay = v),
+                  ),
+                  if (!allDay) ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.schedule_outlined),
+                    title: Text(gr ? 'Ώρα έναρξης' : 'Start time'),
+                    subtitle: Text(time.format(ctx)),
+                    onTap: () async {
+                      final chosen = await showTimePicker(context: ctx, initialTime: time);
+                      if (chosen != null) setDialog(() => time = chosen);
+                    },
+                  ),
+                ]),
+              )),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(gr ? 'Άκυρο' : 'Cancel')),
+            FilledButton(onPressed: () => _formKey.currentState!.validate() ? Navigator.pop(ctx, true) : null,
+              child: Text(gr ? 'Αποθήκευση' : 'Save')),
+          ],
+        ),
+      ),
+    );
+    if (saved == true) {
+      final starts = DateTime(date.year, date.month, date.day, allDay ? 12 : time.hour, allDay ? 0 : time.minute);
+      await _insert('property_calendar_events', {
+        'title': title.text.trim(), 'description': description.text.trim(),
+        'event_type': eventType, 'starts_at': starts.toUtc().toIso8601String(),
+        'all_day': allDay,
+      });
+    }
+    title.dispose();
+    description.dispose();
+  }
+
+  Future<void> _newTask() async {
+    final title = TextEditingController();
+    final description = TextEditingController();
+    final provider = TextEditingController();
+    final contact = TextEditingController();
+    final requests = List<Map<String, dynamic>>.from(
+      await db.from('property_service_requests').select('id,title,status')
+        .eq('property_id', widget.propertyId).order('created_at', ascending: false).limit(40),
+    );
+    if (!mounted) return;
+    DateTime? due = DateUtils.dateOnly(DateTime.now().add(const Duration(days: 7)));
+    var category = 'maintenance', priority = 'normal', linkedRequest = '';
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: Text(gr ? 'Νέα εργασία' : 'New work task'),
+          content: SizedBox(
+            width: 440,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * .68),
+              child: SingleChildScrollView(child: Form(
+                key: _formKey,
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  _field(title, gr ? 'Εργασία' : 'Task', validator: _required),
+                  _field(description, gr ? 'Περιγραφή / οδηγίες' : 'Description / instructions', lines: 3),
+                  DropdownButtonFormField<String>(
+                    initialValue: category,
+                    decoration: InputDecoration(labelText: gr ? 'Κατηγορία' : 'Category'),
+                    items: [
+                      DropdownMenuItem(value: 'maintenance', child: Text(gr ? 'Συντήρηση' : 'Maintenance')),
+                      DropdownMenuItem(value: 'repair', child: Text(gr ? 'Επισκευή' : 'Repair')),
+                      DropdownMenuItem(value: 'cleaning', child: Text(gr ? 'Καθαρισμός' : 'Cleaning')),
+                      DropdownMenuItem(value: 'inspection', child: Text(gr ? 'Έλεγχος' : 'Inspection')),
+                      DropdownMenuItem(value: 'administration', child: Text(gr ? 'Διαχείριση' : 'Administration')),
+                      DropdownMenuItem(value: 'other', child: Text(gr ? 'Άλλο' : 'Other')),
+                    ],
+                    onChanged: (v) { if (v != null) setDialog(() => category = v); },
+                  ),
+                  _field(provider, gr ? 'Ανάθεση σε συνεργείο / προμηθευτή' : 'Assign to contractor / provider'),
+                  _field(contact, gr ? 'Στοιχεία επικοινωνίας (προαιρετικά)' : 'Contact details (optional)'),
+                  DropdownButtonFormField<String>(
+                    initialValue: priority,
+                    decoration: InputDecoration(labelText: gr ? 'Προτεραιότητα' : 'Priority'),
+                    items: [
+                      DropdownMenuItem(value: 'low', child: Text(gr ? 'Χαμηλή' : 'Low')),
+                      DropdownMenuItem(value: 'normal', child: Text(gr ? 'Κανονική' : 'Normal')),
+                      DropdownMenuItem(value: 'high', child: Text(gr ? 'Υψηλή' : 'High')),
+                      DropdownMenuItem(value: 'urgent', child: Text(gr ? 'Επείγουσα' : 'Urgent')),
+                    ],
+                    onChanged: (v) { if (v != null) setDialog(() => priority = v); },
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.event_available_outlined),
+                    title: Text(gr ? 'Προθεσμία' : 'Due date'),
+                    subtitle: Text(due == null ? (gr ? 'Χωρίς προθεσμία' : 'No due date') : _calendarDateLabel(due!)),
+                    trailing: IconButton(onPressed: () => setDialog(() => due = null),
+                      tooltip: gr ? 'Καθαρισμός προθεσμίας' : 'Clear due date', icon: const Icon(Icons.clear)),
+                    onTap: () async {
+                      final chosen = await showDatePicker(context: ctx, initialDate: due ?? DateTime.now().add(const Duration(days: 7)),
+                        firstDate: DateTime.now().subtract(const Duration(days: 365)),
+                        lastDate: DateTime.now().add(const Duration(days: 3650)));
+                      if (chosen != null) setDialog(() => due = DateUtils.dateOnly(chosen));
+                    },
+                  ),
+                  if (requests.isNotEmpty) DropdownButtonFormField<String>(
+                    initialValue: linkedRequest,
+                    decoration: InputDecoration(labelText: gr ? 'Σύνδεση με αναφορά βλάβης (προαιρετικά)' : 'Link to problem report (optional)'),
+                    items: [
+                      DropdownMenuItem(value: '', child: Text(gr ? 'Χωρίς σύνδεση' : 'No linked report')),
+                      ...requests.map((r) => DropdownMenuItem(value: r['id'] as String,
+                        child: Text('${r['title']} · ${r['status']}', overflow: TextOverflow.ellipsis))),
+                    ],
+                    onChanged: (v) { if (v != null) setDialog(() => linkedRequest = v); },
+                  ),
+                ]),
+              )),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(gr ? 'Άκυρο' : 'Cancel')),
+            FilledButton(onPressed: () => _formKey.currentState!.validate() ? Navigator.pop(ctx, true) : null,
+              child: Text(gr ? 'Ανάθεση εργασίας' : 'Assign task')),
+          ],
+        ),
+      ),
+    );
+    if (saved == true) {
+      await _insert('property_tasks', {
+        'title': title.text.trim(), 'description': description.text.trim(),
+        'category': category, 'assigned_provider': provider.text.trim(),
+        'assigned_contact': contact.text.trim(), 'due_on': due == null ? null : _calendarDateKey(due!),
+        'priority': priority, 'linked_service_request_id': linkedRequest.isEmpty ? null : linkedRequest,
+        'status': 'open',
+      });
+    }
+    title.dispose(); description.dispose(); provider.dispose(); contact.dispose();
+  }
+
+  Future<void> _setTaskStatus(Map<String, dynamic> task, String status) async {
+    final userId = db.auth.currentUser?.id;
+    if (userId == null) return;
+    try {
+      await db.from('property_tasks').update({
+        'status': status, 'updated_by': userId,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+        'completed_at': status == 'completed' ? DateTime.now().toUtc().toIso8601String() : null,
+      }).eq('id', task['id']);
+      await _refresh();
+    } on PostgrestException catch (error) {
+      _message(error.message);
+    }
+  }
+
+  Widget _calendarCard(Map<String, dynamic> data) {
+    final items = <_PropertyCalendarItem>[];
+    void addEvent(dynamic raw, String title, String detail, IconData icon) {
+      final date = DateTime.tryParse(raw as String? ?? '')?.toLocal();
+      if (date != null) items.add(_PropertyCalendarItem(date: DateUtils.dateOnly(date), title: title, detail: detail, icon: icon));
+    }
+    for (final meeting in data['meetings'] as List<Map<String, dynamic>>) {
+      if (meeting['status'] != 'cancelled') addEvent(meeting['starts_at'], meeting['title'] as String? ?? '', gr ? 'Συνέλευση · ${meeting['status']}' : 'Meeting · ${meeting['status']}', Icons.groups_outlined);
+    }
+    for (final event in data['calendar_events'] as List<Map<String, dynamic>>) {
+      if (event['status'] != 'cancelled') addEvent(event['starts_at'], event['title'] as String? ?? '', gr ? 'Εκδήλωση · ${event['status']}' : 'Event · ${event['status']}', Icons.event_note_outlined);
+    }
+    for (final task in data['tasks'] as List<Map<String, dynamic>>) {
+      if (task['status'] != 'cancelled' && task['due_on'] != null) addEvent(task['due_on'], task['title'] as String? ?? '', gr ? 'Εργασία · ${task['status']}' : 'Task · ${task['status']}', Icons.assignment_outlined);
+    }
+    final monthsEl = const ['Ιανουάριος','Φεβρουάριος','Μάρτιος','Απρίλιος','Μάιος','Ιούνιος','Ιούλιος','Αύγουστος','Σεπτέμβριος','Οκτώβριος','Νοέμβριος','Δεκέμβριος'];
+    final monthsEn = const ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    final offset = DateTime(_calendarMonth.year, _calendarMonth.month, 1).weekday - 1;
+    final dayCount = DateTime(_calendarMonth.year, _calendarMonth.month + 1, 0).day;
+    final cellCount = ((offset + dayCount + 6) ~/ 7) * 7;
+    final weekdays = gr ? const ['Δ','Τ','Τ','Π','Π','Σ','Κ'] : const ['M','T','W','T','F','S','S'];
+    final selectedItems = items.where((e) => _calendarDateKey(e.date) == _calendarDateKey(_selectedCalendarDay)).toList();
+    void shiftMonth(int amount) {
+      setState(() {
+        _calendarMonth = DateTime(_calendarMonth.year, _calendarMonth.month + amount);
+        if (_selectedCalendarDay.year != _calendarMonth.year || _selectedCalendarDay.month != _calendarMonth.month) {
+          _selectedCalendarDay = DateTime(_calendarMonth.year, _calendarMonth.month, 1);
+        }
+      });
+    }
+    return Card(child: Padding(
+      padding: const EdgeInsets.all(14),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.calendar_month_outlined), const SizedBox(width: 8),
+          Expanded(child: Text(gr ? 'Ημερολόγιο κτιρίου' : 'Building calendar', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700))),
+          if (canManage) IconButton(tooltip: gr ? 'Νέα εκδήλωση' : 'New event', onPressed: busy ? null : _newCalendarEvent, icon: const Icon(Icons.add_circle_outline)),
+        ]),
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          IconButton(onPressed: () => shiftMonth(-1), icon: const Icon(Icons.chevron_left)),
+          Text('${gr ? monthsEl[_calendarMonth.month - 1] : monthsEn[_calendarMonth.month - 1]} ${_calendarMonth.year}', style: Theme.of(context).textTheme.titleSmall),
+          IconButton(onPressed: () => shiftMonth(1), icon: const Icon(Icons.chevron_right)),
+        ]),
+        Row(children: weekdays.map((d) => Expanded(child: Center(child: Text(d, style: Theme.of(context).textTheme.labelSmall)))).toList()),
+        const SizedBox(height: 6),
+        GridView.builder(
+          shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), itemCount: cellCount,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 7, mainAxisSpacing: 3, crossAxisSpacing: 3, childAspectRatio: 1.25),
+          itemBuilder: (ctx, index) {
+            final day = index - offset + 1;
+            if (day < 1 || day > dayCount) return const SizedBox.shrink();
+            final date = DateTime(_calendarMonth.year, _calendarMonth.month, day);
+            final hasEvents = items.any((e) => _calendarDateKey(e.date) == _calendarDateKey(date));
+            final selected = _calendarDateKey(date) == _calendarDateKey(_selectedCalendarDay);
+            return InkWell(
+              borderRadius: BorderRadius.circular(9),
+              onTap: () => setState(() => _selectedCalendarDay = date),
+              child: Container(
+                decoration: BoxDecoration(color: selected ? Theme.of(context).colorScheme.primaryContainer : null, borderRadius: BorderRadius.circular(9)),
+                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Text('$day', style: TextStyle(fontWeight: selected ? FontWeight.w700 : FontWeight.normal)),
+                  const SizedBox(height: 2),
+                  Container(width: 5, height: 5, decoration: BoxDecoration(color: hasEvents ? Theme.of(context).colorScheme.primary : Colors.transparent, shape: BoxShape.circle)),
+                ]),
+              ),
+            );
+          },
+        ),
+        const Divider(height: 20),
+        Text(_calendarDateLabel(_selectedCalendarDay), style: Theme.of(context).textTheme.titleSmall),
+        if (selectedItems.isEmpty)
+          Padding(padding: const EdgeInsets.only(top: 8), child: Text(gr ? 'Δεν υπάρχουν προγραμματισμένα συμβάντα.' : 'No events scheduled.'))
+        else
+          ...selectedItems.map((item) => ListTile(dense: true, contentPadding: EdgeInsets.zero, leading: Icon(item.icon), title: Text(item.title), subtitle: Text(item.detail))),
+      ]),
+    ));
+  }
+
+  Widget _activitySection(List<Map<String, dynamic>> rows) {
+    String typeLabel(String v) => gr ? switch (v) {
+      'property_calendar_events' => 'Ημερολόγιο',
+      'property_tasks' => 'Εργασία',
+      'property_service_requests' => 'Βλάβη / υπηρεσία',
+      'property_meetings' => 'Συνέλευση',
+      'property_operating_expenses' => 'Έξοδο',
+      'property_management_contracts' => 'Σύμβαση',
+      'property_management_contract_amendments' => 'Τροποποίηση σύμβασης',
+      'property_management_services' => 'Υπηρεσία',
+      'property_insurance_policies' => 'Ασφαλιστήριο',
+      'property_insurance_claims' => 'Ασφαλιστική απαίτηση',
+      'property_handover_records' => 'Παράδοση διαχείρισης',
+      'property_charge_runs' => 'Κοινόχρηστα',
+      'property_votes' => 'Ψηφοφορία',
+      'property_notes' => 'Ανακοίνωση',
+      _ => v.replaceAll('property_', '').replaceAll('_', ' '),
+    } : v.replaceAll('property_', '').replaceAll('_', ' ');
+    String actionLabel(String v) => gr ? switch (v) {
+      'insert' => 'δημιουργήθηκε', 'update' => 'ενημερώθηκε', 'delete' => 'διαγράφηκε', _ => v,
+    } : switch (v) {
+      'insert' => 'created', 'update' => 'updated', 'delete' => 'deleted', _ => v,
+    };
+    return Card(clipBehavior: Clip.antiAlias, child: Column(children: [
+      ListTile(leading: const Icon(Icons.history_rounded),
+        title: Text(gr ? 'Ιστορικό ενεργειών' : 'Activity history', style: const TextStyle(fontWeight: FontWeight.w700)),
+        subtitle: Text(gr ? 'Πρόσφατες αλλαγές σε αυτό το ακίνητο' : 'Recent changes for this property')),
+      if (rows.isEmpty)
+        Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 16), child: Align(alignment: Alignment.centerLeft, child: Text(gr ? 'Δεν υπάρχουν ακόμη καταγεγραμμένες ενέργειες.' : 'No recorded activity yet.')))
+      else
+        ...rows.take(20).map((row) {
+          final at = DateTime.tryParse(row['created_at'] as String? ?? '')?.toLocal();
+          final stamp = at == null ? '' : '${_calendarDateLabel(at)} ${at.hour.toString().padLeft(2,'0')}:${at.minute.toString().padLeft(2,'0')}';
+          final actor = row['actor_display_name'] as String? ?? (gr ? 'Χρήστης' : 'User');
+          return ListTile(
+            dense: true,
+            leading: Icon(switch (row['action']) { 'insert' => Icons.add_task_outlined, 'delete' => Icons.delete_outline, _ => Icons.edit_note_outlined }),
+            title: Text('$actor · ${actionLabel(row['action'] as String? ?? '')} · ${typeLabel(row['entity_type'] as String? ?? '')}'),
+            subtitle: Text(stamp),
+          );
+        }),
+    ]));
   }
 
   Future<void> _refresh() async {
@@ -2373,6 +2714,21 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
         icon: const Icon(Icons.person_remove_outlined),
       );
     }
+    if (type == 'task') {
+      final status = row['status'] as String? ?? 'open';
+      if (status == 'cancelled') return null;
+      return PopupMenuButton<String>(
+        tooltip: gr ? 'Αλλαγή κατάστασης εργασίας' : 'Change task status',
+        onSelected: (value) => _setTaskStatus(row, value),
+        itemBuilder: (_) => [
+          if (status != 'open') PopupMenuItem(value: 'open', child: Text(gr ? 'Ανοιχτή' : 'Open')),
+          if (status != 'in_progress') PopupMenuItem(value: 'in_progress', child: Text(gr ? 'Σε εξέλιξη' : 'In progress')),
+          if (status != 'blocked') PopupMenuItem(value: 'blocked', child: Text(gr ? 'Σε αναμονή' : 'Blocked')),
+          if (status != 'completed') PopupMenuItem(value: 'completed', child: Text(gr ? 'Ολοκληρώθηκε' : 'Completed')),
+          PopupMenuItem(value: 'cancelled', child: Text(gr ? 'Ακύρωση' : 'Cancel task')),
+        ],
+      );
+    }
     if (type == 'service_request') return _serviceRequestAction(row);
     if (type == 'claim') return _insuranceClaimAction(row);
     return null;
@@ -2425,6 +2781,13 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
             titleText = '${_serviceCategoryLabel(row['service_category'] as String?)} · ${row['title'] as String? ?? ''}';
             subtitle =
                 '${row['fee_amount'] == null ? (gr ? 'Απαιτείται προσφορά' : 'Quote required') : _money((row['fee_amount'] as num))} · ${row['fee_unit']} · ${row['requires_prior_approval'] == true ? (gr ? 'με έγκριση' : 'approval required') : ''}';
+          } else if (type == 'task') {
+            final provider = (row['assigned_provider'] as String? ?? '').trim();
+            final due = row['due_on'] as String?;
+            final status = row['status'] as String? ?? '';
+            final priority = row['priority'] as String? ?? 'normal';
+            titleText = row['title'] as String? ?? '';
+            subtitle = '${provider.isEmpty ? (gr ? 'Χωρίς ανάθεση' : 'Unassigned') : provider} · ${due ?? (gr ? 'Χωρίς προθεσμία' : 'No due date')} · ${gr ? switch (status) { 'open' => 'Ανοιχτή', 'in_progress' => 'Σε εξέλιξη', 'blocked' => 'Σε αναμονή', 'completed' => 'Ολοκληρώθηκε', 'cancelled' => 'Ακυρώθηκε', _ => status } : status} · ${gr ? switch (priority) { 'low' => 'Χαμηλή', 'high' => 'Υψηλή', 'urgent' => 'Επείγουσα', _ => 'Κανονική' } : priority}${(row['description'] as String? ?? '').isEmpty ? '' : ' · ${row['description']}'}';
           } else if (type == 'resident') {
             titleText = row['resident_email'] as String? ?? '';
             final apartment = row['apartment_number'] as String? ?? '';
@@ -2650,6 +3013,8 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
     final entries = d['charge_entries'] as List<Map<String, dynamic>>;
     final expenses = d['expenses'] as List<Map<String, dynamic>>;
     final serviceRequests = d['service_requests'] as List<Map<String, dynamic>>;
+    final tasks = d['tasks'] as List<Map<String, dynamic>>;
+    final activity = d['activity'] as List<Map<String, dynamic>>;
     final settings = d['settings'] as Map<String, dynamic>?;
     final opening = (settings?['opening_balance'] as num?)?.toDouble() ?? 0;
     final received = entries.fold<double>(
@@ -2824,6 +3189,9 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
                 ),
               ),
             ),
+          _calendarCard(d),
+          _section(gr ? 'Εργασίες και αναθέσεις' : 'Tasks and assignments', Icons.assignment_outlined, tasks, _newTask, 'task'),
+          _activitySection(activity),
           const SizedBox(height: 8),
           Card(
             color: below
@@ -3056,4 +3424,12 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
       },
     ),
   );
+}
+
+class _PropertyCalendarItem {
+  const _PropertyCalendarItem({required this.date, required this.title, required this.detail, required this.icon});
+  final DateTime date;
+  final String title;
+  final String detail;
+  final IconData icon;
 }
