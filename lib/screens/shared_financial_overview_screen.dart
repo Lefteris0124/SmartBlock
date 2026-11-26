@@ -316,7 +316,7 @@ class _SharedFinancialOverviewScreenState
                   title: _gr ? 'Κοινόχρηστα που εισπράχθηκαν' : 'Common charges collected',
                   value: _money(data['common_charges_paid']),
                   color: const Color(0xFF267657),
-                  detail: '${_gr ? 'Από' : 'Of'} ${_money(data['common_charges_due'])}',
+                  detail: '${_gr ? 'Από' : 'Of'} ${_money(data['common_charges_due'])} · ${_gr ? 'καθαρά στο ταμείο' : 'net to fund'} ${_money(data['common_charges_net_received'])}',
                 ),
                 _metric(
                   width: width,
@@ -349,8 +349,8 @@ class _SharedFinancialOverviewScreenState
                   Expanded(
                     child: Text(
                       _gr
-                          ? 'Το κοινό ταμείο είναι εκτίμηση από τις καταχωρημένες εισπράξεις και πληρωμένα έξοδα. Οι χρεώσεις ανά διαμέρισμα κατανέμονται με βάση τα δηλωμένα διαμερίσματα και τα τετραγωνικά.'
-                          : 'The common fund is estimated from recorded receipts and paid expenses. Apartment amounts are apportioned using registered units and area.',
+                          ? 'Το κοινό ταμείο είναι εκτίμηση από τις καθαρές καταχωρημένες εισπράξεις (μετά από τυχόν προμήθεια online πληρωμής), το αρχικό υπόλοιπο και τα πληρωμένα έξοδα. Οι χρεώσεις ανά διαμέρισμα κατανέμονται με βάση τα δηλωμένα διαμερίσματα και τα τετραγωνικά.'
+                          : 'The common fund is estimated from net recorded receipts (after any online payment fee), opening balance and paid expenses. Apartment amounts are apportioned using registered units and area.',
                     ),
                   ),
                 ],
