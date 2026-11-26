@@ -30,6 +30,7 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
   final _client = SmartBlockTrialSession.client;
   late Future<_RoleAccess> _access = _loadAccess();
   bool _greek = true;
+  bool _tutorialCheckScheduled = false;
   dynamic _roleRequestChannel;
   dynamic _billingNoticeChannel;
   dynamic _userNotificationChannel;
@@ -791,12 +792,158 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
     Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
+  List<_TutorialStep> _tutorialStepsFor(_RoleAccess access) {
+    final registration = access.registration;
+    final status = registration?['status'] as String?;
+    final roles = List<String>.from(
+      (registration?['requested_roles'] as List?) ?? const [],
+    );
+    final isOwner = roles.contains('property_owner') ||
+        (registration == null && access.ownerHasProperties);
+    final isTenant = roles.contains('tenant') ||
+        (status == null && access.residentCount > 0);
+    final steps = <_TutorialStep>[
+      _TutorialStep(
+        icon: Icons.waving_hand_outlined,
+        titleEl: 'Καλώς ήρθες στο SmartBlock',
+        titleEn: 'Welcome to SmartBlock',
+        bodyEl: 'Αυτός ο σύντομος οδηγός σε βοηθά να βρεις τις βασικές λειτουργίες του λογαριασμού σου. Μπορείς να τον ανοίξεις ξανά από το κουμπί Οδηγίες.',
+        bodyEn: 'This short guide helps you find the main features in your account. Reopen it any time from Instructions.',
+      ),
+    ];
+    if (isOwner) {
+      steps.add(_TutorialStep(
+        icon: Icons.apartment_outlined,
+        titleEl: 'Για ιδιοκτήτες',
+        titleEn: 'For property owners',
+        bodyEl: 'Άνοιξε «Ιδιοκτήτης / διαχειριστής» για να δεις τα ακίνητα, τους ιδιοκτήτες και τα διαμερίσματα. Από εκεί διαχειρίζεσαι μισθώσεις, βλάβες, ψηφοφορίες, ανακοινώσεις και οικονομικά ανά ακίνητο.',
+        bodyEn: 'Open “Owner / manager” to view properties, owners and apartments. From there, manage leases, service requests, votes, notices and finances for each property.',
+      ));
+      steps.add(_TutorialStep(
+        icon: Icons.account_balance_outlined,
+        titleEl: 'Οικονομικά ιδιοκτήτη',
+        titleEn: 'Owner finances',
+        bodyEl: 'Στις λογιστικές καταστάσεις βλέπεις τις εισπράξεις και τα έξοδα. Χρησιμοποίησε τα φίλτρα για να εξετάσεις κάθε ακίνητο ξεχωριστά.',
+        bodyEn: 'Account statements show collections and expenses. Use the filters to review each property separately.',
+      ));
+    }
+    if (isTenant) {
+      steps.add(_TutorialStep(
+        icon: Icons.home_outlined,
+        titleEl: 'Για ενοικιαστές',
+        titleEn: 'For tenants',
+        bodyEl: 'Στις «Λογιστικές καταστάσεις» βλέπεις ενοίκια, κοινόχρηστα και υπόλοιπα. Στο «Συμβόλαιο» βρίσκεις τους όρους και τις ημερομηνίες της μίσθωσης.',
+        bodyEn: 'Account statements show rent, common charges and balances. “Rental agreement” contains your lease terms and dates.',
+      ));
+      steps.add(_TutorialStep(
+        icon: Icons.build_circle_outlined,
+        titleEl: 'Αναφορά βλάβης',
+        titleEn: 'Report a problem',
+        bodyEl: 'Πάτησε «Βλάβες», διάλεξε κατηγορία και μετά «Νέα βλάβη». Μπορείς επίσης να παρακολουθήσεις υπάρχον αίτημα ή να προσθέσεις σχόλιο.',
+        bodyEn: 'Tap “Problems”, choose a category, then “New problem”. You can also track an existing request or add a comment.',
+      ));
+    }
+    if (!isOwner && !isTenant) {
+      steps.add(_TutorialStep(
+        icon: Icons.person_search_outlined,
+        titleEl: access.isStaff || access.isAdmin
+            ? 'Εργαλεία διαχείρισης'
+            : 'Ενεργοποίηση πρόσβασης',
+        titleEn: access.isStaff || access.isAdmin
+            ? 'Administration tools'
+            : 'Getting access',
+        bodyEl: access.isStaff || access.isAdmin
+            ? 'Από τη διαχείριση SmartBlock ελέγχεις αιτήματα και ακίνητα. Με την «Προβολή ως χρήστης» δοκιμάζεις την εμπειρία ιδιοκτήτη ή ενοικιαστή.'
+            : 'Δήλωσε αν είσαι ιδιοκτήτης, ενοικιαστής ή και τα δύο. Η πρόσβαση στις αντίστοιχες λειτουργίες ενεργοποιείται μετά την έγκριση και σύνδεση με ακίνητο.',
+        bodyEn: access.isStaff || access.isAdmin
+            ? 'Use SmartBlock administration to review requests and properties. “Preview as user” lets you try the owner or tenant experience.'
+            : 'Select whether you are an owner, tenant, or both. Role features become available after approval and property assignment.',
+      ));
+    }
+    if (access.isStaff || access.isAdmin) {
+      steps.add(_TutorialStep(
+        icon: Icons.admin_panel_settings_outlined,
+        titleEl: 'Για ομάδα SmartBlock',
+        titleEn: 'For SmartBlock staff',
+        bodyEl: 'Η «Διαχείριση SmartBlock» περιλαμβάνει εγκρίσεις και έλεγχο ακινήτων. Οι διαχειριστές έχουν επίσης προβολή ως χρήστης και ρυθμίσεις χρεώσεων.',
+        bodyEn: '“SmartBlock admin” contains approvals and property reviews. Administrators also have user preview and billing settings.',
+      ));
+    }
+    steps.add(_TutorialStep(
+      icon: Icons.notifications_active_outlined,
+      titleEl: 'Ειδοποιήσεις και βοήθεια',
+      titleEn: 'Notifications and help',
+      bodyEl: 'Το κουδουνάκι εμφανίζει ειδοποιήσεις. Πάτησε μια ειδοποίηση για να μεταφερθείς στη σχετική ενέργεια. Το κουμπί Οδηγίες στην κορυφή ανοίγει ξανά αυτόν τον οδηγό.',
+      bodyEn: 'The bell shows notifications. Tap one to open the related action. The Instructions button at the top reopens this guide.',
+    ));
+    return steps;
+  }
+
+  String get _tutorialPreferenceKey {
+    final userId = _client.auth.currentUser?.id ?? 'guest';
+    return 'smartblock_tutorial_seen_$userId';
+  }
+
+  Future<void> _maybeShowFirstUseTutorial(_RoleAccess access) async {
+    if (_tutorialCheckScheduled) return;
+    _tutorialCheckScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      try {
+        final preferences = await SharedPreferences.getInstance();
+        if (preferences.getBool(_tutorialPreferenceKey) == true) return;
+        final completed = await _showTutorial(access);
+        if (completed == true) {
+          await preferences.setBool(_tutorialPreferenceKey, true);
+        }
+      } catch (_) {
+        // The dashboard and the persistent Instructions button remain usable.
+      }
+    });
+  }
+
+  Future<bool?> _showTutorial(_RoleAccess access) => showDialog<bool>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => _SmartBlockTutorialDialog(
+      isGreek: _greek,
+      steps: _tutorialStepsFor(access),
+    ),
+  );
+
+  Future<void> _openTutorial() async {
+    try {
+      final access = await _access;
+      if (mounted) await _showTutorial(access);
+    } catch (_) {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text(_greek ? 'Οδηγίες' : 'Instructions'),
+          content: Text(_greek
+              ? 'Οι οδηγίες θα εμφανιστούν μόλις φορτωθούν τα δικαιώματα του λογαριασμού.'
+              : 'Instructions will be available once your account access has loaded.'),
+          actions: [TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(_greek ? 'Κλείσιμο' : 'Close'),
+          )],
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
       title: const Text('SmartBlock'),
       actions: [
         const SmartBlockLanguageMenu(),
+        IconButton(
+          tooltip: _greek ? 'Οδηγίες' : 'Instructions',
+          onPressed: _openTutorial,
+          icon: const Icon(Icons.help_outline_rounded),
+        ),
         FutureBuilder<List<Map<String, dynamic>>>(
           future: _userNotifications,
           builder: (context, snapshot) {
@@ -878,6 +1025,7 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
         final showResident =
             approvedRoles.contains('tenant') ||
             (status == null && access.residentCount > 0);
+        _maybeShowFirstUseTutorial(access);
         final needsRoleRequest =
             status == 'rejected' ||
             (status == null &&
@@ -1194,6 +1342,145 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
       },
     ),
   );
+}
+
+class _TutorialStep {
+  const _TutorialStep({
+    required this.icon,
+    required this.titleEl,
+    required this.titleEn,
+    required this.bodyEl,
+    required this.bodyEn,
+  });
+
+  final IconData icon;
+  final String titleEl;
+  final String titleEn;
+  final String bodyEl;
+  final String bodyEn;
+}
+
+class _SmartBlockTutorialDialog extends StatefulWidget {
+  const _SmartBlockTutorialDialog({
+    required this.isGreek,
+    required this.steps,
+  });
+
+  final bool isGreek;
+  final List<_TutorialStep> steps;
+
+  @override
+  State<_SmartBlockTutorialDialog> createState() =>
+      _SmartBlockTutorialDialogState();
+}
+
+class _SmartBlockTutorialDialogState extends State<_SmartBlockTutorialDialog> {
+  int _index = 0;
+
+  void _finish() => Navigator.of(context).pop(true);
+
+  @override
+  Widget build(BuildContext context) {
+    final step = widget.steps[_index];
+    final colors = Theme.of(context).colorScheme;
+    final last = _index == widget.steps.length - 1;
+    return Dialog(
+      insetPadding: const EdgeInsets.all(20),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: 480,
+          maxHeight: MediaQuery.sizeOf(context).height * .82,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.isGreek ? 'Οδηγός SmartBlock' : 'SmartBlock guide',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _finish,
+                    child: Text(widget.isGreek ? 'Παράλειψη' : 'Skip'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              CircleAvatar(
+                radius: 34,
+                backgroundColor: colors.primaryContainer,
+                child: Icon(step.icon, size: 34, color: colors.primary),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                widget.isGreek ? step.titleEl : step.titleEn,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF17364A),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Text(
+                    widget.isGreek ? step.bodyEl : step.bodyEn,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      height: 1.5,
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 22),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(widget.steps.length, (i) => Container(
+                  width: i == _index ? 20 : 7,
+                  height: 7,
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  decoration: BoxDecoration(
+                    color: i == _index ? colors.primary : colors.outlineVariant,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                )),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  if (_index > 0)
+                    TextButton(
+                      onPressed: () => setState(() => _index--),
+                      child: Text(widget.isGreek ? 'Πίσω' : 'Back'),
+                    )
+                  else
+                    const Spacer(),
+                  const Spacer(),
+                  FilledButton.icon(
+                    onPressed: last
+                        ? _finish
+                        : () => setState(() => _index++),
+                    icon: Icon(last ? Icons.check_rounded : Icons.arrow_forward_rounded),
+                    label: Text(last
+                        ? (widget.isGreek ? 'Ολοκλήρωση' : 'Done')
+                        : (widget.isGreek ? 'Επόμενο' : 'Next')),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _RoleAccess {
