@@ -2699,7 +2699,17 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     ),
     body: TabBarView(
       controller: tabs,
-      children: [\n        voteListing(),\n        notesListing(),\n        chargeListing(),\n        rentListing(),\n        SharedFinancialOverviewScreen(\n          propertyId: widget.propertyId,\n          propertyName: widget.propertyName,\n          isGreek: gr,\n        ),\n      ],
+      children: [
+        voteListing(),
+        notesListing(),
+        chargeListing(),
+        rentListing(),
+        SharedFinancialOverviewScreen(
+          propertyId: widget.propertyId,
+          propertyName: widget.propertyName,
+          isGreek: gr,
+        ),
+      ],
     ),
   );
 }
