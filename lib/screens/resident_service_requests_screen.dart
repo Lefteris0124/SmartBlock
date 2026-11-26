@@ -9,6 +9,8 @@ class ResidentServiceRequestsScreen extends StatefulWidget {
     required this.propertyName,
     required this.apartmentNumber,
     required this.isGreek,
+    this.initialCategory,
+    this.initialRequestId,
     super.key,
   });
 
@@ -16,6 +18,8 @@ class ResidentServiceRequestsScreen extends StatefulWidget {
   final String propertyName;
   final String apartmentNumber;
   final bool isGreek;
+  final String? initialCategory;
+  final String? initialRequestId;
 
   @override
   State<ResidentServiceRequestsScreen> createState() =>
@@ -29,14 +33,31 @@ class _ResidentServiceRequestsScreenState
   late Future<List<Map<String, dynamic>>> _services = _loadServices();
   final _formKey = GlobalKey<FormState>();
   bool busy = false;
+  String? _selectedCategory;
+  String _selectedMode = 'menu';
   bool get gr => widget.isGreek;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedCategory = widget.initialCategory;
+    _selectedMode = widget.initialRequestId == null ? 'menu' : 'track';
+  }
+
+  String _requestTypeForCategory(String category) => switch (category) {
+        'plumbing' || 'building_work' || 'electrical' => 'damage_report',
+        'furniture_assembly' || 'painting' => 'maintenance',
+        'cleaning' => 'cleaning',
+        'safety' => 'safety',
+        _ => 'other',
+      };
 
   Future<List<Map<String, dynamic>>> _loadRequests() async =>
       List<Map<String, dynamic>>.from(
         await db
             .from('property_service_requests')
             .select(
-              'id,request_type,service_category,priority,apartment_number,title,description,status,quote_amount,supplier,created_at',
+              'id,request_type,service_category,priority,apartment_number,title,description,location,status,quote_amount,supplier,created_at',
             )
             .eq('property_id', widget.propertyId)
             .order('created_at', ascending: false),
@@ -222,15 +243,15 @@ class _ResidentServiceRequestsScreenState
       ? (gr ? 'Συμπλήρωσε αυτό το πεδίο.' : 'This field is required.')
       : null;
 
-  Future<void> _newReport() async {
+  Future<void> _newReport(String initialCategory) async {
     final services = await _services;
     if (!mounted) return;
 
-    var requestType = 'damage_report';
+    var requestType = _requestTypeForCategory(initialCategory);
     var issueScope = 'unit';
     var priority = 'normal';
     var serviceId = '';
-    var serviceCategory = 'plumbing';
+    var serviceCategory = initialCategory;
     var apartmentNumber = widget.apartmentNumber;
     final title = TextEditingController();
     final description = TextEditingController();
@@ -318,46 +339,6 @@ class _ResidentServiceRequestsScreenState
                           },
                         ),
                         const SizedBox(height: 12),
-                        DropdownButtonFormField<String>(
-                          initialValue: requestType,
-                          decoration: InputDecoration(
-                            labelText: gr ? 'Τύπος αιτήματος' : 'Request type',
-                          ),
-                          items: [
-                            DropdownMenuItem(
-                              value: 'damage_report',
-                              child: Text(
-                                gr ? 'Αναφορά βλάβης' : 'Report a problem',
-                              ),
-                            ),
-                            DropdownMenuItem(
-                              value: 'service',
-                              child: Text(gr ? 'Υπηρεσία' : 'Service'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'maintenance',
-                              child: Text(gr ? 'Συντήρηση' : 'Maintenance'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'cleaning',
-                              child: Text(gr ? 'Καθαρισμός' : 'Cleaning'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'safety',
-                              child: Text(gr ? 'Ασφάλεια' : 'Safety'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'other',
-                              child: Text(gr ? 'Άλλο' : 'Other'),
-                            ),
-                          ],
-                          onChanged: (value) {
-                            if (value != null) {
-                              setDialog(() => requestType = value);
-                            }
-                          },
-                        ),
-                        const SizedBox(height: 12),
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -421,7 +402,8 @@ class _ResidentServiceRequestsScreenState
                               setDialog(() => priority = value);
                           },
                         ),
-                        if (services.isNotEmpty) ...[
+                        final categoryServices = services.where((service) => service['service_category'] == serviceCategory).toList();
+                        if (categoryServices.isNotEmpty) ...[
                           const SizedBox(height: 12),
                           DropdownButtonFormField<String>(
                             initialValue: serviceId,
@@ -435,7 +417,7 @@ class _ResidentServiceRequestsScreenState
                                 value: '',
                                 child: Text(gr ? 'Χωρίς επιλογή' : 'None'),
                               ),
-                              ...services.map(
+                              ...categoryServices.map(
                                 (service) => DropdownMenuItem(
                                   value: service['service_id'] as String,
                                   child: Text(service['title'] as String),
@@ -444,11 +426,7 @@ class _ResidentServiceRequestsScreenState
                             ],
                             onChanged: (value) {
                               if (value != null) {
-                                setDialog(() {
-                                  serviceId = value;
-                                  final selected = services.firstWhere((s) => s['service_id'] == value);
-                                  serviceCategory = selected['service_category'] as String? ?? 'other';
-                                });
+                                setDialog(() => serviceId = value);
                               }
                             },
                           ),
@@ -526,6 +504,7 @@ class _ResidentServiceRequestsScreenState
       setState(() {
         busy = false;
         _requests = _loadRequests();
+        _selectedMode = 'track';
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -558,107 +537,335 @@ class _ResidentServiceRequestsScreenState
     }
   }
 
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(widget.propertyName)),
-    floatingActionButton: FloatingActionButton.extended(
-      onPressed: busy ? null : _newReport,
-      icon: const Icon(Icons.report_problem_outlined),
-      label: Text(gr ? 'Νέα αναφορά' : 'New report'),
+  Future<List<Map<String, dynamic>>> _loadComments(String requestId) async =>
+      List<Map<String, dynamic>>.from(
+        await db
+            .from('property_service_request_comments')
+            .select('id,author_id,author_name,body,created_at')
+            .eq('request_id', requestId)
+            .order('created_at'),
+      );
+
+  Future<void> _commentOnRequest(Map<String, dynamic> request) async {
+    final controller = TextEditingController();
+    var comments = <Map<String, dynamic>>[];
+    Object? loadError;
+    try {
+      comments = await _loadComments(request['id'] as String);
+    } catch (error) {
+      loadError = error;
+    }
+    if (!mounted) { controller.dispose(); return; }
+    final send = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialog) => AlertDialog(
+          title: Text(gr ? 'Σχόλιο για παλιά βλάβη' : 'Comment on this report'),
+          content: SizedBox(
+            width: 460,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.sizeOf(dialogContext).height * .65,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(request['title'] as String? ?? ''),
+                    const SizedBox(height: 8),
+                    if (loadError != null)
+                      Text(gr ? 'Δεν φορτώθηκαν τα προηγούμενα σχόλια.' : 'Previous comments could not be loaded.')
+                    else if (comments.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Text(gr ? 'Δεν υπάρχουν σχόλια ακόμη.' : 'No comments yet.'),
+                      )
+                    else
+                      ...comments.map((comment) => Card(
+                        child: ListTile(
+                          leading: const Icon(Icons.chat_bubble_outline),
+                          title: Text(comment['author_name'] as String? ?? ''),
+                          subtitle: Text('${comment['body']}\n${comment['created_at']}'),
+                        ),
+                      )),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: controller,
+                      onChanged: (_) => setDialog(() {}),
+                      minLines: 3,
+                      maxLines: 5,
+                      maxLength: 2000,
+                      decoration: InputDecoration(
+                        labelText: gr ? 'Το σχόλιό σου' : 'Your comment',
+                        hintText: gr ? 'Γράψε ενημέρωση ή ερώτηση για τη βλάβη.' : 'Add an update or question about the problem.',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(gr ? 'Άκυρο' : 'Cancel')),
+            FilledButton(
+              onPressed: busy || controller.text.trim().length < 2
+                  ? null
+                  : () => Navigator.pop(dialogContext, true),
+              child: Text(gr ? 'Αποστολή σχολίου' : 'Send comment'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (send == true) {
+      setState(() => busy = true);
+      try {
+        await db.rpc('comment_on_property_service_request', params: {
+          'p_request_id': request['id'],
+          'p_body': controller.text.trim(),
+        });
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(gr ? 'Το σχόλιο καταχωρίστηκε.' : 'Comment added.')),
+        );
+      } on PostgrestException catch (error) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+      } finally {
+        if (mounted) setState(() => busy = false);
+      }
+    }
+    controller.dispose();
+  }
+
+  Widget _actionCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) => Card(
+    child: ListTile(
+      leading: CircleAvatar(child: Icon(icon)),
+      title: Text(title),
+      subtitle: Text(subtitle),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: onTap,
     ),
-    body: RefreshIndicator(
-      onRefresh: _refresh,
-      child: ListView(
+  );
+
+  Widget _commentThread(String requestId) => FutureBuilder<List<Map<String, dynamic>>>(
+    future: _loadComments(requestId),
+    builder: (context, snapshot) {
+      if (snapshot.connectionState == ConnectionState.waiting) {
+        return const Padding(
+          padding: EdgeInsets.all(16),
+          child: Center(child: CircularProgressIndicator()),
+        );
+      }
+      if (snapshot.hasError) {
+        return ListTile(title: Text(gr ? 'Δεν φορτώθηκαν τα σχόλια.' : 'Comments could not be loaded.'));
+      }
+      final comments = snapshot.data ?? const [];
+      if (comments.isEmpty) {
+        return ListTile(title: Text(gr ? 'Δεν υπάρχουν σχόλια.' : 'No comments yet.'));
+      }
+      return Column(children: comments.map((comment) => ListTile(
+        leading: const Icon(Icons.chat_bubble_outline),
+        title: Text(comment['author_name'] as String? ?? ''),
+        subtitle: Text('${comment['body']}\n${comment['created_at']}'),
+      )).toList());
+    },
+  );
+
+  Widget _requestCard(Map<String, dynamic> row, {required bool commentMode}) {
+    final requestId = row['id'] as String;
+    final subtitle = '${_typeLabel(row['request_type'] as String?)} · ${_serviceCategoryLabel(row['service_category'] as String?)} · ${_statusLabel(row['status'] as String?)} · ${row['apartment_number'] == 'common_area' ? (gr ? 'Πολυκατοικία / κοινόχρηστος χώρος' : 'Building / common area') : (gr ? 'Διαμέρισμα ' : 'Apartment ') + (row['apartment_number'] as String? ?? '')}';
+    if (commentMode) {
+      return Card(
+        child: ListTile(
+          leading: const Icon(Icons.chat_bubble_outline),
+          title: Text(row['title'] as String? ?? ''),
+          subtitle: Text(subtitle),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: busy ? null : () => _commentOnRequest(row),
+        ),
+      );
+    }
+    return Card(
+      child: ExpansionTile(
+        leading: const Icon(Icons.track_changes_outlined),
+        title: Text(row['title'] as String? ?? ''),
+        subtitle: Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis),
+        children: [
+          ListTile(
+            title: Text(gr ? 'Περιγραφή' : 'Description'),
+            subtitle: Text(row['description'] as String? ?? ''),
+          ),
+          if ((row['location'] as String? ?? '').isNotEmpty)
+            ListTile(
+              leading: const Icon(Icons.place_outlined),
+              title: Text(gr ? 'Τοποθεσία' : 'Location'),
+              subtitle: Text(row['location'] as String),
+            ),
+          _commentThread(requestId),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: OutlinedButton.icon(
+                onPressed: busy ? null : () => _commentOnRequest(row),
+                icon: const Icon(Icons.add_comment_outlined),
+                label: Text(gr ? 'Πρόσθεσε σχόλιο' : 'Add a comment'),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _categoryGrid() => ListView(
+    padding: const EdgeInsets.all(16),
+    children: [
+      Card(
+        child: ListTile(
+          leading: const Icon(Icons.home_work_outlined),
+          title: Text(gr ? 'Διαμέρισμα ${widget.apartmentNumber}' : 'Apartment ${widget.apartmentNumber}'),
+          subtitle: Text(gr ? 'Διάλεξε κατηγορία αναφοράς.' : 'Choose a report category.'),
+        ),
+      ),
+      const SizedBox(height: 12),
+      GridView.count(
+        crossAxisCount: 2,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 8,
+        childAspectRatio: 1.08,
+        children: [
+          for (final category in const [
+            'plumbing','building_work','electrical','furniture_assembly',
+            'painting','cleaning','safety','other',
+          ])
+            _serviceCategoryCard(
+              category,
+              false,
+              () => setState(() {
+                _selectedCategory = category;
+                _selectedMode = 'menu';
+              }),
+            ),
+        ],
+      ),
+    ],
+  );
+
+  Widget _selectedCategoryView(List<Map<String, dynamic>> requests) {
+    final category = _selectedCategory!;
+    final rows = requests.where((row) => row['service_category'] == category).toList();
+    if (_selectedMode == 'menu') {
+      return ListView(
         padding: const EdgeInsets.all(16),
         children: [
           Card(
             child: ListTile(
-              leading: const CircleAvatar(
-                child: Icon(Icons.home_work_outlined),
-              ),
-              title: Text(
-                gr
-                    ? 'Το διαμέρισμά σου: ${widget.apartmentNumber}'
-                    : 'Your apartment: ${widget.apartmentNumber}',
-              ),
-              subtitle: Text(
-                gr
-                    ? 'Οι αναφορές σου είναι συνδεδεμένες με αυτό το διαμέρισμα.'
-                    : 'Your reports are linked to this apartment.',
-              ),
+              leading: CircleAvatar(child: Icon(_serviceCategoryIcon(category))),
+              title: Text(_serviceCategoryLabel(category)),
+              subtitle: Text(_serviceCategoryDescription(category)),
             ),
           ),
           const SizedBox(height: 12),
-          Text(
-            gr ? 'Οι αναφορές μου' : 'My reports',
-            style: Theme.of(context).textTheme.titleLarge,
+          _actionCard(
+            icon: Icons.add_circle_outline,
+            title: gr ? 'Νέα βλάβη' : 'New problem report',
+            subtitle: gr ? 'Καταχώρισε νέο αίτημα σε αυτή την κατηγορία.' : 'Create a new report in this category.',
+            onTap: busy ? () {} : () => _newReport(category),
           ),
-          const SizedBox(height: 8),
-          FutureBuilder<List<Map<String, dynamic>>>(
-            future: _requests,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Center(child: CircularProgressIndicator()),
-                );
-              }
-              if (snapshot.hasError) {
-                return Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.error_outline),
-                    title: Text(
-                      gr
-                          ? 'Δεν ήταν δυνατή η φόρτωση των αναφορών.'
-                          : 'Could not load reports.',
-                    ),
-                    trailing: IconButton(
-                      onPressed: _refresh,
-                      icon: const Icon(Icons.refresh),
-                    ),
-                  ),
-                );
-              }
-              final rows = snapshot.data ?? const [];
-              if (rows.isEmpty) {
-                return Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.task_alt_outlined),
-                    title: Text(
-                      gr
-                          ? 'Δεν έχεις υποβάλει αναφορές.'
-                          : 'You have not submitted any reports.',
-                    ),
-                  ),
-                );
-              }
-              return Column(
-                children: rows
-                    .map(
-                      (row) => Card(
-                        child: ListTile(
-                          leading: Icon(
-                            row['request_type'] == 'damage_report'
-                                ? Icons.build_circle_outlined
-                                : Icons.miscellaneous_services_outlined,
-                          ),
-                          title: Text(row['title'] as String? ?? ''),
-                          subtitle: Text(
-                            '${_typeLabel(row['request_type'] as String?)} · ${_serviceCategoryLabel(row['service_category'] as String?)} · ${_priorityLabel(row['priority'] as String?)} · ${_statusLabel(row['status'] as String?)}${row['apartment_number'] == 'common_area' ? (gr ? ' · Κοινόχρηστος χώρος' : ' · Common area') : ''}${row['quote_amount'] == null ? '' : ' · €${row['quote_amount']}'}',
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          isThreeLine: false,
-                        ),
-                      ),
-                    )
-                    .toList(),
-              );
-            },
+          _actionCard(
+            icon: Icons.track_changes_outlined,
+            title: gr ? 'Παρακολούθηση' : 'Track reports',
+            subtitle: gr ? 'Δες την κατάσταση παλιών και νέων αναφορών.' : 'Check the status of existing reports.',
+            onTap: () => setState(() => _selectedMode = 'track'),
           ),
-          const SizedBox(height: 88),
+          _actionCard(
+            icon: Icons.add_comment_outlined,
+            title: gr ? 'Σχόλιο παλιάς βλάβης' : 'Comment on an existing report',
+            subtitle: gr ? 'Επίλεξε παλιά αναφορά και πρόσθεσε ενημέρωση.' : 'Select an existing report and add an update.',
+            onTap: () => setState(() => _selectedMode = 'comment'),
+          ),
         ],
+      );
+    }
+    final commentMode = _selectedMode == 'comment';
+    if (rows.isEmpty) {
+      return ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.inbox_outlined),
+              title: Text(commentMode
+                  ? (gr ? 'Δεν υπάρχουν παλιές αναφορές σε αυτή την κατηγορία.' : 'No existing reports in this category.')
+                  : (gr ? 'Δεν υπάρχουν αναφορές σε αυτή την κατηγορία.' : 'No reports in this category.')),
+            ),
+          ),
+        ],
+      );
+    }
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: rows.map((row) => _requestCard(row, commentMode: commentMode)).toList(),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final category = _selectedCategory;
+    final title = category == null
+        ? widget.propertyName
+        : _selectedMode == 'menu'
+            ? _serviceCategoryLabel(category)
+            : _selectedMode == 'track'
+                ? (gr ? 'Παρακολούθηση βλαβών' : 'Track reports')
+                : (gr ? 'Σχόλια βλαβών' : 'Report comments');
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(title),
+        leading: IconButton(
+          tooltip: gr ? 'Πίσω' : 'Back',
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            if (_selectedCategory == null) {
+              Navigator.of(context).maybePop();
+            } else if (_selectedMode != 'menu') {
+              setState(() => _selectedMode = 'menu');
+            } else {
+              setState(() => _selectedCategory = null);
+            }
+          },
+        ),
       ),
-    ),
-  );
+      body: category == null
+          ? _categoryGrid()
+          : FutureBuilder<List<Map<String, dynamic>>>(
+              future: _requests,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(gr
+                          ? 'Δεν ήταν δυνατή η φόρτωση των αναφορών.'
+                          : 'Could not load reports.'),
+                    ),
+                  );
+                }
+                return _selectedCategoryView(snapshot.data ?? const []);
+              },
+            ),
+    );
+  }
 }
