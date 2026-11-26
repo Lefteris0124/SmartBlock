@@ -881,7 +881,6 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
         fee = TextEditingController();
     var unit = 'fixed', approved = true;
     var serviceCategory = 'cleaning';
-    var serviceCategory = 'cleaning';
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
