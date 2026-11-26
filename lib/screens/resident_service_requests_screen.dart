@@ -98,6 +98,39 @@ class _ResidentServiceRequestsScreenState
           _ => 'Other service',
         };
 
+  IconData _serviceCategoryIcon(String? category) => switch (category) {
+        'plumbing' => Icons.plumbing_outlined,
+        'building_work' => Icons.construction_outlined,
+        'electrical' => Icons.electrical_services_outlined,
+        'furniture_assembly' => Icons.chair_outlined,
+        'painting' => Icons.format_paint_outlined,
+        'cleaning' => Icons.cleaning_services_outlined,
+        'safety' => Icons.health_and_safety_outlined,
+        _ => Icons.miscellaneous_services_outlined,
+      };
+
+  String _serviceCategoryDescription(String? category) => gr
+      ? switch (category) {
+          'plumbing' => 'Διαρροές, βρύσες και σωληνώσεις',
+          'building_work' => 'Ρωγμές, σοβάδες και οικοδομικές εργασίες',
+          'electrical' => 'Φωτισμός, διακόπτες και ηλεκτρικός πίνακας',
+          'furniture_assembly' => 'Συναρμολόγηση ή τοποθέτηση επίπλων',
+          'painting' => 'Βάψιμο τοίχων και επιφανειών',
+          'cleaning' => 'Καθαρισμός διαμερίσματος ή κοινόχρηστων',
+          'safety' => 'Κίνδυνος ή θέμα ασφάλειας',
+          _ => 'Περιέγραψε το αίτημα στις λεπτομέρειες',
+        }
+      : switch (category) {
+          'plumbing' => 'Leaks, taps and pipes',
+          'building_work' => 'Cracks, plaster and building work',
+          'electrical' => 'Lighting, switches and electrical panel',
+          'furniture_assembly' => 'Furniture assembly or installation',
+          'painting' => 'Painting walls and surfaces',
+          'cleaning' => 'Apartment or shared-area cleaning',
+          'safety' => 'Safety concern or hazard',
+          _ => 'Describe your request in the details',
+        };
+
   String _priorityLabel(String? priority) => gr
       ? switch (priority) {
           'emergency' => 'Άμεσος κίνδυνος',
@@ -159,21 +192,37 @@ class _ResidentServiceRequestsScreenState
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         if (requestType == 'damage_report') ...[
-                          DropdownButtonFormField<String>(
-                            initialValue: issueScope,
-                            decoration: InputDecoration(
-                              labelText: gr ? 'Πού είναι η βλάβη;' : 'Where is the problem?',
+                          Card(
+                            child: Column(
+                              children: [
+                                ListTile(
+                                  leading: const Icon(Icons.apartment_outlined),
+                                  title: Text(gr ? 'Πού βρίσκεται η βλάβη;' : 'Where is the problem?'),
+                                  subtitle: Text(gr ? 'Επίλεξε πολυκατοικία ή διαμέρισμα.' : 'Choose building or apartment.'),
+                                ),
+                                ListTile(
+                                  selected: issueScope == 'building',
+                                  leading: const CircleAvatar(child: Icon(Icons.domain_outlined)),
+                                  title: Text(gr ? 'Πολυκατοικία / κοινόχρηστος χώρος' : 'Building / shared area'),
+                                  trailing: Icon(issueScope == 'building' ? Icons.check_circle : Icons.chevron_right),
+                                  onTap: () => setDialog(() {
+                                    issueScope = 'building';
+                                    apartmentNumber = 'common_area';
+                                  }),
+                                ),
+                                ListTile(
+                                  selected: issueScope == 'unit',
+                                  leading: const CircleAvatar(child: Icon(Icons.home_outlined)),
+                                  title: Text(gr ? 'Διαμέρισμα' : 'Apartment'),
+                                  subtitle: Text(gr ? 'Διαμέρισμα ${widget.apartmentNumber}' : 'Apartment ${widget.apartmentNumber}'),
+                                  trailing: Icon(issueScope == 'unit' ? Icons.check_circle : Icons.chevron_right),
+                                  onTap: () => setDialog(() {
+                                    issueScope = 'unit';
+                                    apartmentNumber = widget.apartmentNumber;
+                                  }),
+                                ),
+                              ],
                             ),
-                            items: [
-                              DropdownMenuItem(value: 'unit', child: Text(gr ? 'Μέσα στο διαμέρισμα' : 'Inside my apartment')),
-                              DropdownMenuItem(value: 'building', child: Text(gr ? 'Στο κτίριο / κοινόχρηστο χώρο' : 'Building / common area')),
-                            ],
-                            onChanged: (value) {
-                              if (value != null) setDialog(() {
-                                issueScope = value;
-                                apartmentNumber = value == 'building' ? 'common_area' : widget.apartmentNumber;
-                              });
-                            },
                           ),
                           const SizedBox(height: 12),
                         ],
@@ -246,20 +295,43 @@ class _ResidentServiceRequestsScreenState
                           },
                         ),
                         const SizedBox(height: 12),
-                        DropdownButtonFormField<String>(
-                          initialValue: serviceCategory,
-                          decoration: InputDecoration(labelText: gr ? 'Κατηγορία υπηρεσίας / βλάβης' : 'Service / problem category'),
-                          items: const [
-                            DropdownMenuItem(value: 'plumbing', child: Text('Υδραυλικά / Plumbing')),
-                            DropdownMenuItem(value: 'building_work', child: Text('Οικοδομικά / Building work')),
-                            DropdownMenuItem(value: 'electrical', child: Text('Ηλεκτρολογικά / Electrical')),
-                            DropdownMenuItem(value: 'furniture_assembly', child: Text('Συναρμολόγηση επίπλων / Furniture assembly')),
-                            DropdownMenuItem(value: 'painting', child: Text('Βαψίματα / Painting')),
-                            DropdownMenuItem(value: 'cleaning', child: Text('Καθαρισμός / Cleaning')),
-                            DropdownMenuItem(value: 'safety', child: Text('Ασφάλεια / Safety')),
-                            DropdownMenuItem(value: 'other', child: Text('Άλλο / Other')),
-                          ],
-                          onChanged: (value) { if (value != null) setDialog(() => serviceCategory = value); },
+                        Card(
+                          child: Column(
+                            children: [
+                              ListTile(
+                                leading: const Icon(Icons.category_outlined),
+                                title: Text(gr ? 'Κατηγορία αναφοράς' : 'Report category'),
+                                subtitle: Text(gr ? 'Επίλεξε την κατηγορία που ταιριάζει καλύτερα.' : 'Choose the closest matching category.'),
+                              ),
+                              for (final category in const [
+                                'plumbing',
+                                'building_work',
+                                'electrical',
+                                'furniture_assembly',
+                                'painting',
+                                'cleaning',
+                                'safety',
+                                'other',
+                              ])
+                                ListTile(
+                                  dense: true,
+                                  selected: serviceCategory == category,
+                                  leading: CircleAvatar(
+                                    child: Icon(_serviceCategoryIcon(category)),
+                                  ),
+                                  title: Text(_serviceCategoryLabel(category)),
+                                  subtitle: Text(_serviceCategoryDescription(category)),
+                                  trailing: Icon(
+                                    serviceCategory == category
+                                        ? Icons.check_circle
+                                        : Icons.chevron_right,
+                                  ),
+                                  onTap: () => setDialog(
+                                    () => serviceCategory = category,
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
                         const SizedBox(height: 12),
                         DropdownButtonFormField<String>(
