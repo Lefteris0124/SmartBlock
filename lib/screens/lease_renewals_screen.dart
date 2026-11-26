@@ -18,6 +18,7 @@ class LeaseRenewalsScreen extends StatefulWidget {
 class _LeaseRenewalsScreenState extends State<LeaseRenewalsScreen> {
   final _db = SmartBlockTrialSession.client;
   late Future<List<Map<String, dynamic>>> _rows = _load();
+  late Future<List<Map<String, dynamic>>> _tenantRequests = _loadTenantRequests();
   bool get _gr => widget.isGreek;
   Future<List<Map<String, dynamic>>> _load() async =>
       List<Map<String, dynamic>>.from(
@@ -26,7 +27,45 @@ class _LeaseRenewalsScreenState extends State<LeaseRenewalsScreen> {
             .select()
             .order('created_at', ascending: false),
       );
-  void _refresh() => setState(() => _rows = _load());
+  Future<List<Map<String, dynamic>>> _loadTenantRequests() async =>
+      List<Map<String, dynamic>>.from(
+        await _db.from('lease_tenant_requests').select().order('created_at', ascending: false),
+      );
+
+  void _refresh() => setState(() {
+    _rows = _load();
+    _tenantRequests = _loadTenantRequests();
+  });
+
+  Future<void> _respondToTenantRequest(Map<String, dynamic> request, String decision) async {
+    final note = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(decision == 'accepted'
+            ? (_gr ? 'Αποδοχή αιτήματος;' : 'Accept request?')
+            : (_gr ? 'Απόρριψη αιτήματος;' : 'Decline request?')),
+        content: TextField(
+          controller: note, minLines: 2, maxLines: 4,
+          decoration: InputDecoration(labelText: _gr ? 'Μήνυμα προς τον ένοικο (προαιρετικό)' : 'Message to tenant (optional)'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(_gr ? 'Άκυρο' : 'Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(_gr ? 'Αποστολή απάντησης' : 'Send response')),
+        ],
+      ),
+    );
+    if (confirmed != true) { note.dispose(); return; }
+    try {
+      await _db.rpc('review_lease_tenant_request', params: {
+        'p_request_id': request['id'], 'p_decision': decision, 'p_note': note.text.trim(),
+      });
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_gr ? 'Η απάντηση στάλθηκε.' : 'Your response was sent.')));
+      _refresh();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    } finally { note.dispose(); }
+  }
 
   String _date(dynamic value) {
     final d = DateTime.tryParse(value?.toString() ?? '');
@@ -503,72 +542,70 @@ class _LeaseRenewalsScreenState extends State<LeaseRenewalsScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: Text(_gr ? 'Ανανεώσεις μισθώσεων' : 'Lease renewals'),
+      title: Text(_gr ? 'Συμβόλαια & αιτήματα' : 'Agreements & requests'),
       actions: [
-        IconButton(
-          tooltip: _gr ? 'Δημιουργία μίσθωσης' : 'Create rental agreement',
-          onPressed: _createLease,
-          icon: const Icon(Icons.add_link),
-        ),
+        IconButton(tooltip: _gr ? 'Δημιουργία μίσθωσης' : 'Create rental agreement', onPressed: _createLease, icon: const Icon(Icons.add_link)),
         IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh)),
       ],
     ),
-    body: FutureBuilder<List<Map<String, dynamic>>>(
-      future: _rows,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text(snapshot.error.toString()),
-            ),
-          );
-        }
-        final rows = snapshot.data ?? const [];
-        if (rows.isEmpty) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text(
-                _gr
-                    ? 'Δεν υπάρχουν ανανεώσεις συνδεδεμένες με τον λογαριασμό σου.'
-                    : 'There are no renewals linked to your account.',
-              ),
-            ),
-          );
-        }
-        return RefreshIndicator(
-          onRefresh: () async => _refresh(),
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: rows
-                .map(
-                  (row) => Card(
-                    child: ListTile(
-                      leading: Icon(
-                        row['status'] == 'signed'
-                            ? Icons.verified_outlined
-                            : Icons.edit_document,
-                      ),
-                      title: Text(
-                        '${row['property_name']} · ${row['unit_reference']}',
-                      ),
-                      subtitle: Text(
-                        '${row['monthly_rent']} ${row['currency']} / ${_gr ? 'μήνα' : 'month'} · ${_date(row['start_date'])} – ${_date(row['end_date'])}\n${_status(row['status'].toString())}',
-                      ),
-                      isThreeLine: true,
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () => _review(row),
-                    ),
-                  ),
-                )
-                .toList(),
+    body: RefreshIndicator(
+      onRefresh: () async { _refresh(); await Future.wait([_rows, _tenantRequests]); },
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        children: [
+          FutureBuilder<List<Map<String, dynamic>>>(
+            future: _tenantRequests,
+            builder: (context, snapshot) {
+              if (snapshot.hasError) return Card(child: ListTile(leading: const Icon(Icons.error_outline), title: Text(_gr ? 'Δεν φορτώθηκαν τα αιτήματα μίσθωσης.' : 'Lease requests could not be loaded.')));
+              final requests = snapshot.data ?? const [];
+              if (requests.isEmpty) return const SizedBox.shrink();
+              return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(_gr ? 'Αιτήματα ενοίκων' : 'Tenant requests', style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 8),
+                ...requests.map((request) {
+                  final type = request['request_type'] == 'renewal' ? (_gr ? 'Αίτημα ανανέωσης' : 'Renewal request') : (_gr ? 'Αίτημα πρόωρης διακοπής' : 'Early termination request');
+                  final status = request['status']?.toString() ?? 'requested';
+                  final statusLabel = switch (status) { 'requested' => _gr ? 'Νέο' : 'New', 'reviewed' => _gr ? 'Υπό εξέταση' : 'Under review', 'accepted' => _gr ? 'Εγκρίθηκε' : 'Accepted', 'declined' => _gr ? 'Δεν εγκρίθηκε' : 'Declined', _ => status };
+                  final details = [
+                    _dateTime(request['created_at']),
+                    (_gr ? 'Κατάσταση: ' : 'Status: ') + statusLabel,
+                    if (request['requested_end_date'] != null) (_gr ? 'Προτεινόμενη λήξη: ' : 'Requested end: ') + _date(request['requested_end_date']),
+                    if ((request['message'] as String? ?? '').isNotEmpty) request['message'].toString(),
+                    if ((request['decision_note'] as String? ?? '').isNotEmpty) (_gr ? 'Απάντηση: ' : 'Response: ') + request['decision_note'].toString(),
+                  ].join(' · ');
+                  return Card(child: ListTile(
+                    leading: Icon(request['request_type'] == 'renewal' ? Icons.autorenew : Icons.event_busy_outlined),
+                    title: Text(type), subtitle: Text(details), isThreeLine: true,
+                    trailing: ['requested', 'reviewed'].contains(status) ? Row(mainAxisSize: MainAxisSize.min, children: [
+                      IconButton(tooltip: _gr ? 'Αποδοχή' : 'Accept', onPressed: () => _respondToTenantRequest(request, 'accepted'), icon: const Icon(Icons.check_circle_outline)),
+                      IconButton(tooltip: _gr ? 'Απόρριψη' : 'Decline', onPressed: () => _respondToTenantRequest(request, 'declined'), icon: const Icon(Icons.cancel_outlined)),
+                    ]) : null,
+                  ));
+                }),
+                const SizedBox(height: 16),
+              ]);
+            },
           ),
-        );
-      },
+          Text(_gr ? 'Συμβόλαια και ανανεώσεις' : 'Agreements and renewals', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 8),
+          FutureBuilder<List<Map<String, dynamic>>>(
+            future: _rows,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) return const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()));
+              if (snapshot.hasError) return Card(child: ListTile(leading: const Icon(Icons.error_outline), title: Text(snapshot.error.toString())));
+              final rows = snapshot.data ?? const [];
+              if (rows.isEmpty) return Card(child: ListTile(leading: const Icon(Icons.description_outlined), title: Text(_gr ? 'Δεν υπάρχουν συμβόλαια ή ανανεώσεις.' : 'No agreements or renewals yet.')));
+              return Column(children: rows.map((row) => Card(child: ListTile(
+                leading: Icon(row['status'] == 'signed' ? Icons.verified_outlined : Icons.edit_document),
+                title: Text('${row['property_name']} · ${row['unit_reference']}'),
+                subtitle: Text('${row['monthly_rent']} ${row['currency']} / ${_gr ? 'μήνα' : 'month'} · ${_date(row['start_date'])} – ${_date(row['end_date'])}\n${_status(row['status'].toString())}'),
+                isThreeLine: true, trailing: const Icon(Icons.chevron_right), onTap: () => _review(row),
+              ))).toList());
+            },
+          ),
+        ],
+      ),
     ),
   );
 }
