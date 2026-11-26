@@ -131,6 +131,69 @@ class _ResidentServiceRequestsScreenState
           _ => 'Describe your request in the details',
         };
 
+  Widget _serviceCategoryCard(
+    String category,
+    bool selected,
+    VoidCallback onTap,
+  ) {
+    final colors = Theme.of(context).colorScheme;
+    return Card(
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      color: selected ? colors.secondaryContainer : colors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: selected ? colors.primary : colors.outlineVariant,
+          width: selected ? 2 : 1,
+        ),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 20,
+                    child: Icon(_serviceCategoryIcon(category)),
+                  ),
+                  const Spacer(),
+                  Icon(
+                    selected ? Icons.check_circle : Icons.radio_button_unchecked,
+                    color: selected ? colors.primary : colors.outline,
+                    size: 20,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _serviceCategoryLabel(category),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Expanded(
+                child: Text(
+                  _serviceCategoryDescription(category),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   String _priorityLabel(String? priority) => gr
       ? switch (priority) {
           'emergency' => 'Άμεσος κίνδυνος',
@@ -295,43 +358,41 @@ class _ResidentServiceRequestsScreenState
                           },
                         ),
                         const SizedBox(height: 12),
-                        Card(
-                          child: Column(
-                            children: [
-                              ListTile(
-                                leading: const Icon(Icons.category_outlined),
-                                title: Text(gr ? 'Κατηγορία αναφοράς' : 'Report category'),
-                                subtitle: Text(gr ? 'Επίλεξε την κατηγορία που ταιριάζει καλύτερα.' : 'Choose the closest matching category.'),
-                              ),
-                              for (final category in const [
-                                'plumbing',
-                                'building_work',
-                                'electrical',
-                                'furniture_assembly',
-                                'painting',
-                                'cleaning',
-                                'safety',
-                                'other',
-                              ])
-                                ListTile(
-                                  dense: true,
-                                  selected: serviceCategory == category,
-                                  leading: CircleAvatar(
-                                    child: Icon(_serviceCategoryIcon(category)),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading: const Icon(Icons.category_outlined),
+                              title: Text(gr ? 'Κατηγορία αναφοράς' : 'Report category'),
+                              subtitle: Text(gr ? 'Πάτησε την κάρτα που ταιριάζει.' : 'Tap the card that fits best.'),
+                            ),
+                            GridView.count(
+                              crossAxisCount: 2,
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              crossAxisSpacing: 8,
+                              mainAxisSpacing: 8,
+                              childAspectRatio: 1.08,
+                              children: [
+                                for (final category in const [
+                                  'plumbing',
+                                  'building_work',
+                                  'electrical',
+                                  'furniture_assembly',
+                                  'painting',
+                                  'cleaning',
+                                  'safety',
+                                  'other',
+                                ])
+                                  _serviceCategoryCard(
+                                    category,
+                                    serviceCategory == category,
+                                    () => setDialog(() => serviceCategory = category),
                                   ),
-                                  title: Text(_serviceCategoryLabel(category)),
-                                  subtitle: Text(_serviceCategoryDescription(category)),
-                                  trailing: Icon(
-                                    serviceCategory == category
-                                        ? Icons.check_circle
-                                        : Icons.chevron_right,
-                                  ),
-                                  onTap: () => setDialog(
-                                    () => serviceCategory = category,
-                                  ),
-                                ),
-                            ],
-                          ),
+                              ],
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 12),
                         DropdownButtonFormField<String>(
