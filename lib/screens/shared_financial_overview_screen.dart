@@ -408,14 +408,15 @@ class _SharedFinancialOverviewScreenState
             ),
           ),
           if ((data['unallocated_common_charges_due'] as num? ?? 0) > 0 ||
-              (data['unallocated_common_charges_paid'] as num? ?? 0) > 0)
+              (data['unallocated_common_charges_paid'] as num? ?? 0) > 0 ||
+              (data['unallocated_common_charges_billed'] as num? ?? 0) > 0)
             Card(
               color: colors.tertiaryContainer,
               child: ListTile(
                 leading: const Icon(Icons.link_off_outlined),
                 title: Text(_gr ? 'Χρεώσεις χωρίς ασφαλή αντιστοίχιση' : 'Charges without a verified apartment match'),
                 subtitle: Text(
-                  '${_gr ? 'Αντιστοίχισε όλα τα διαμερίσματα και έλεγξε τον αριθμό και τα τ.μ. που δηλώθηκαν στους ιδιοκτήτες. Μη κατανεμημένη οφειλή' : 'Assign every apartment and verify each owner’s declared unit count and area. Unallocated balance'}: ${_money(data['unallocated_common_charges_due'])} · ${_gr ? 'μη αντιστοιχισμένες εισπράξεις' : 'unallocated receipts'}: ${_money(data['unallocated_common_charges_paid'])}',
+                  '${_gr ? 'Αντιστοίχισε όλα τα διαμερίσματα και έλεγξε τον αριθμό και τα τ.μ. που δηλώθηκαν στους ιδιοκτήτες. Μη κατανεμημένη τρέχουσα οφειλή' : 'Assign every apartment and verify each owner’s declared unit count and area. Unallocated outstanding balance'}: ${_money(data['unallocated_common_charges_due'])} · ${_gr ? 'μη αντιστοιχισμένες εισπράξεις' : 'unallocated receipts'}: ${_money(data['unallocated_common_charges_paid'])} · ${_gr ? 'μη κατανεμημένες συνολικές χρεώσεις' : 'unallocated billed total'}: ${_money(data['unallocated_common_charges_billed'])}',
                 ),
                 trailing: canManage
                     ? IconButton(
