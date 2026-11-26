@@ -9,6 +9,7 @@ import 'admin_billing_screen.dart';
 import 'accounting_screen.dart';
 import 'properties_screen.dart';
 import 'lease_renewals_screen.dart';
+import 'resident_contracts_screen.dart';
 import 'support_chat_screen.dart';
 import 'role_preview_screen.dart';
 import 'property_modules_screen.dart';
@@ -717,6 +718,65 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
     }
   }
 
+  Future<void> _openResidentServiceRequests() async {
+    try {
+      final rows = List<Map<String, dynamic>>.from(
+        await _client.rpc('list_my_resident_properties'),
+      );
+      if (!mounted) return;
+      if (rows.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(_greek
+              ? 'Δεν υπάρχει ακόμη διαμέρισμα συνδεδεμένο με τον λογαριασμό σου.'
+              : 'No apartment is linked to your account yet.'),
+        ));
+        return;
+      }
+      Map<String, dynamic>? selected;
+      if (rows.length == 1) {
+        selected = rows.first;
+      } else {
+        selected = await showDialog<Map<String, dynamic>>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: Text(_greek ? 'Επίλεξε ακίνητο' : 'Choose a property'),
+            content: SizedBox(
+              width: 440,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: rows.map((row) => ListTile(
+                  leading: const Icon(Icons.apartment_outlined),
+                  title: Text((row['property_name'] ??
+                      (_greek ? 'Ακίνητο' : 'Property')).toString()),
+                  subtitle: Text((_greek ? 'Διαμέρισμα ' : 'Apartment ') +
+                      (row['apartment_number'] ?? '').toString()),
+                  onTap: () => Navigator.pop(ctx, row),
+                )).toList(),
+              ),
+            ),
+          ),
+        );
+      }
+      if (selected == null || !mounted) return;
+      final propertyId = selected['property_id'].toString();
+      await _open(ResidentServiceRequestsScreen(
+        propertyId: propertyId,
+        propertyName: await _propertyName(propertyId),
+        apartmentNumber: (selected['apartment_number'] ?? '').toString(),
+        isGreek: _greek,
+      ));
+    } on PostgrestException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(_greek
+            ? 'Δεν ήταν δυνατή η φόρτωση των ακινήτων σου.'
+            : 'Could not load your properties.'),
+      ));
+    }
+  }
+
   Future<void> _open(Widget screen) async {
     await Navigator.of(context)
         .push(MaterialPageRoute<void>(builder: (_) => screen));
@@ -978,38 +1038,67 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
                 },
               ),
             const SizedBox(height: 8),
-            _RoleCard(
-              icon: Icons.account_balance_outlined,
-              title: _greek ? 'Λογιστικές καταστάσεις' : 'Accounting statements',
-              detail: access.isAdmin
-                  ? (_greek ? 'Εισπράξεις, αποδείξεις, αποδόσεις και αρχεία ελέγχου.' : 'Collections, receipts, owner payouts and audit exports.')
-                  : (_greek ? 'Προβολή των οικονομικών καταστάσεων του λογαριασμού σου.' : 'View your financial statements.'),
-              onTap: () => _open(const AccountingScreen()),
-            ),
-            _RoleCard(
-              icon: Icons.edit_document,
-              title: _greek ? 'Ανανεώσεις μισθώσεων' : 'Lease renewals',
-              detail: _greek
-                  ? 'Δες και αποδέξου ηλεκτρονικά τις ανανεώσεις που αφορούν τον λογαριασμό σου.'
-                  : 'Review and electronically accept renewals linked to your account.',
-              onTap: () => _open(
-                LeaseRenewalsScreen(isGreek: _greek, isStaff: access.isStaff),
+            if (showResident) ...[
+              _RoleCard(
+                icon: Icons.account_balance_outlined,
+                title: _greek ? 'Λογιστικές καταστάσεις' : 'Account statements',
+                detail: _greek
+                    ? 'Ενοίκια, κοινόχρηστα, αποδείξεις και υπόλοιπα οφειλών.'
+                    : 'Rent, common charges, receipts and outstanding balances.',
+                onTap: () => _open(const AccountingScreen()),
               ),
-            ),
-            _RoleCard(
-              icon: Icons.support_agent_outlined,
-              title: access.isStaff
-                  ? (_greek ? 'Υποστήριξη χρηστών' : 'Support inbox')
-                  : (_greek ? 'Βοήθεια & chat' : 'Help chat'),
-              detail: access.isStaff
-                  ? (_greek
-                        ? 'Δες και απάντησε στα αιτήματα βοήθειας.'
-                        : 'View and reply to user help requests.')
-                  : (_greek
-                        ? 'Στείλε μήνυμα στην ομάδα SmartBlock.'
-                        : 'Message the SmartBlock support team.'),
-              onTap: () => _open(SupportChatScreen(isGreek: _greek)),
-            ),
+              _RoleCard(
+                icon: Icons.description_outlined,
+                title: _greek ? 'Συμβόλαιο' : 'Rental agreement',
+                detail: _greek
+                    ? 'Όροι, ημερομηνίες, εγγύηση και αιτήματα ανανέωσης ή πρόωρης λήξης.'
+                    : 'Terms, dates, deposit and renewal or early termination requests.',
+                onTap: () => _open(ResidentContractsScreen(isGreek: _greek)),
+              ),
+              _RoleCard(
+                icon: Icons.support_agent_outlined,
+                title: _greek ? 'Βοήθεια' : 'Help',
+                detail: _greek
+                    ? 'Επικοινώνησε με την ομάδα υποστήριξης SmartBlock.'
+                    : 'Contact the SmartBlock support team.',
+                onTap: () => _open(SupportChatScreen(isGreek: _greek)),
+              ),
+              _RoleCard(
+                icon: Icons.build_circle_outlined,
+                title: _greek ? 'Βλάβες' : 'Problems',
+                detail: _greek
+                    ? 'Δήλωσε βλάβη στο διαμέρισμα ή στην πολυκατοικία και διάλεξε κατηγορία.'
+                    : 'Report an apartment or building issue and choose a category.',
+                onTap: _openResidentServiceRequests,
+              ),
+            ] else ...[
+              _RoleCard(
+                icon: Icons.account_balance_outlined,
+                title: _greek ? 'Λογιστικές καταστάσεις' : 'Accounting statements',
+                detail: access.isAdmin
+                    ? (_greek ? 'Εισπράξεις, αποδείξεις, αποδόσεις και αρχεία ελέγχου.' : 'Collections, receipts, owner payouts and audit exports.')
+                    : (_greek ? 'Προβολή των οικονομικών καταστάσεων του λογαριασμού σου.' : 'View your financial statements.'),
+                onTap: () => _open(const AccountingScreen()),
+              ),
+              _RoleCard(
+                icon: Icons.edit_document,
+                title: _greek ? 'Ανανεώσεις μισθώσεων' : 'Lease renewals',
+                detail: _greek
+                    ? 'Δες και αποδέξου ηλεκτρονικά τις ανανεώσεις που αφορούν τον λογαριασμό σου.'
+                    : 'Review and electronically accept renewals linked to your account.',
+                onTap: () => _open(LeaseRenewalsScreen(isGreek: _greek, isStaff: access.isStaff)),
+              ),
+              _RoleCard(
+                icon: Icons.support_agent_outlined,
+                title: access.isStaff
+                    ? (_greek ? 'Υποστήριξη χρηστών' : 'Support inbox')
+                    : (_greek ? 'Βοήθεια & chat' : 'Help chat'),
+                detail: access.isStaff
+                    ? (_greek ? 'Δες και απάντησε στα αιτήματα βοήθειας.' : 'View and reply to user help requests.')
+                    : (_greek ? 'Στείλε μήνυμα στην ομάδα SmartBlock.' : 'Message the SmartBlock support team.'),
+                onTap: () => _open(SupportChatScreen(isGreek: _greek)),
+              ),
+            ],
             if (access.isStaff)
               _RoleCard(
                 icon: Icons.admin_panel_settings_outlined,
