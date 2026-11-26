@@ -17,6 +17,7 @@ class _AccountingScreenState extends State<AccountingScreen>{
   bool greek=true,loading=true,busy=false,admin=false;
   String? error;
   Map<String,dynamic> summary={};
+  Map<String,dynamic> tenantFinancialSummary={};
   List<Map<String,dynamic>> statements=[];
   List<Map<String,dynamic>> customerStatements=[];
   List<Map<String,dynamic>> receipts=[];
@@ -39,6 +40,7 @@ class _AccountingScreenState extends State<AccountingScreen>{
         customerStatements=List<Map<String,dynamic>>.from(await db.rpc('admin_list_accounting_customer_statements',params:{'p_month':date(previous)}) as List);
       }
       else {
+        tenantFinancialSummary=Map<String,dynamic>.from(await db.rpc('my_tenant_financial_summary') as Map);
         statements=List<Map<String,dynamic>>.from(await db.rpc('my_accounting_customer_statements') as List);
         final selectedYear = ownerPeriodFilter == 'all'
             ? null
@@ -327,10 +329,39 @@ class _AccountingScreenState extends State<AccountingScreen>{
     );
   }
 
+  Widget tenantFinancialOverview(){
+    dynamic value(String key)=>tenantFinancialSummary[key]??0;
+    return Card(
+      child:Padding(
+        padding:const EdgeInsets.all(16),
+        child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+          Text(greek?'Οικονομική εικόνα ενοικιαστή':'Tenant financial overview',
+            style:Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height:8),
+          Wrap(spacing:4,runSpacing:4,children:[
+            _ownerFinanceMetric(greek?'Ενοίκια που καταβλήθηκαν':'Rent paid',value('rent_paid'),Icons.payments_outlined),
+            _ownerFinanceMetric(greek?'Οφειλόμενα ενοίκια':'Rent outstanding',value('rent_due'),Icons.pending_actions_outlined),
+            _ownerFinanceMetric(greek?'Κοινόχρηστα που καταβλήθηκαν':'Common charges paid',value('common_charges_paid'),Icons.receipt_long_outlined),
+            _ownerFinanceMetric(greek?'Οφειλόμενα κοινόχρηστα':'Common charges outstanding',value('common_charges_due'),Icons.request_quote_outlined),
+            _ownerFinanceMetric(greek?'Εγγύηση συμφωνημένη':'Agreed deposit',value('deposit_agreed'),Icons.lock_outline),
+            _ownerFinanceMetric(greek?'Πληρωμές ζημιών καταχωρισμένες':'Recorded damage payments',value('damage_paid_recorded'),Icons.build_outlined),
+            _ownerFinanceMetric(greek?'Οφειλές ζημιών καταχωρισμένες':'Recorded damage charges due',value('damage_due_recorded'),Icons.warning_amber_outlined),
+          ]),
+          const SizedBox(height:8),
+          Text(greek
+            ?'Η εγγύηση δείχνει το συμφωνημένο ποσό του συμβολαίου. Οι πληρωμές ζημιών εμφανίζονται όταν καταχωριστούν ως χρέωση στο σύστημα.'
+            :'The deposit is the amount agreed in the contract. Damage payments appear when they are recorded as a charge in the system.',
+            style:Theme.of(context).textTheme.bodySmall),
+        ]),
+      ),
+    );
+  }
+
   Widget accountView()=>ListView(padding:const EdgeInsets.all(16),children:[
-    Text(greek?'Οι ενοποιημένες καταστάσεις μου':'My consolidated statements',style:Theme.of(context).textTheme.headlineSmall),
+    Text(greek?'Λογιστικές καταστάσεις':'Account statements',style:Theme.of(context).textTheme.headlineSmall),
     Text(greek?'Μία κατάσταση ανά μήνα, συγκεντρωμένη για όλα τα ακίνητα και τις μονάδες του λογαριασμού σου.':'One statement per month, consolidated across all properties and units linked to your account.'),
-    ownerFinancialOverview(),
+    tenantFinancialOverview(),
+    if(ownerFinancialRows.isNotEmpty) ownerFinancialOverview(),
     if(statements.isEmpty)Card(child:Padding(padding:const EdgeInsets.all(20),child:Text(greek?'Δεν υπάρχει ακόμη διαθέσιμη κατάσταση.':'No statement available yet.'))),
     ...statements.map((s){
       final data=Map<String,dynamic>.from((s['statement_data'] as Map?)??const {});
@@ -346,5 +377,5 @@ class _AccountingScreenState extends State<AccountingScreen>{
     }),
   ]);
   @override
-  Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:Text(greek?'Οικονομικά':'Accounting'),actions:[IconButton(onPressed:loading||busy?null:refresh,icon:const Icon(Icons.refresh))]),body:loading?const Center(child:CircularProgressIndicator()):error!=null?Center(child:Padding(padding:const EdgeInsets.all(20),child:Text(error!))):Stack(children:[admin?adminView():accountView(),if(busy)const Positioned.fill(child:ColoredBox(color:Color(0x55FFFFFF),child:Center(child:CircularProgressIndicator())))]));
+  Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:Text(greek?'Λογιστικές καταστάσεις':'Account statements'),actions:[IconButton(onPressed:loading||busy?null:refresh,icon:const Icon(Icons.refresh))]),body:loading?const Center(child:CircularProgressIndicator()):error!=null?Center(child:Padding(padding:const EdgeInsets.all(20),child:Text(error!))):Stack(children:[admin?adminView():accountView(),if(busy)const Positioned.fill(child:ColoredBox(color:Color(0x55FFFFFF),child:Center(child:CircularProgressIndicator())))]));
 }
