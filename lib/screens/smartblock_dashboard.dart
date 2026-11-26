@@ -191,7 +191,7 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
             ? null
             : await _client
                   .from('property_service_requests')
-                  .select('apartment_number')
+                  .select('apartment_number,service_category')
                   .eq('id', relatedId)
                   .maybeSingle();
         final residentRows = List<Map<String, dynamic>>.from(
@@ -208,6 +208,8 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
             apartmentNumber:
                 (request?['apartment_number'] as String?) ??
                 (resident?['apartment_number'] as String? ?? ''),
+            initialCategory: request?['service_category'] as String?,
+            initialRequestId: relatedId,
             isGreek: _greek,
           ),
         );
