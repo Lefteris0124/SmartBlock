@@ -2,6 +2,7 @@ import 'package:flutter/material.dart' hide Text;
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../smartblock_trial_session.dart';
+import 'shared_financial_overview_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../smartblock_text.dart';
@@ -25,9 +26,9 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     with SingleTickerProviderStateMixin {
   final db = SmartBlockTrialSession.client;
   late final tabs = TabController(
-    length: 4,
+    length: 5,
     vsync: this,
-    initialIndex: widget.initialTab.clamp(0, 3).toInt(),
+    initialIndex: widget.initialTab.clamp(0, 4).toInt(),
   );
   bool busy = false;
   bool isAdmin = false;
@@ -2678,7 +2679,7 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     floatingActionButton: AnimatedBuilder(
       animation: tabs,
       builder: (context, _) {
-        if (tabs.index == 3 && !canManageProperty) return const SizedBox.shrink();
+        if (tabs.index == 4 || (tabs.index == 3 && !canManageProperty)) return const SizedBox.shrink();
         return FloatingActionButton.extended(
           onPressed: switch (tabs.index) {
             0 => createVote,
@@ -2698,7 +2699,7 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     ),
     body: TabBarView(
       controller: tabs,
-      children: [voteListing(), notesListing(), chargeListing(), rentListing()],
+      children: [\n        voteListing(),\n        notesListing(),\n        chargeListing(),\n        rentListing(),\n        SharedFinancialOverviewScreen(\n          propertyId: widget.propertyId,\n          propertyName: widget.propertyName,\n          isGreek: gr,\n        ),\n      ],
     ),
   );
 }
