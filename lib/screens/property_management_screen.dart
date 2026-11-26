@@ -853,11 +853,35 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
     }
   }
 
+  String _serviceCategoryLabel(String? category) => gr
+      ? switch (category) {
+          'plumbing' => 'Υδραυλικά',
+          'building_work' => 'Οικοδομικά',
+          'electrical' => 'Ηλεκτρολογικά',
+          'furniture_assembly' => 'Συναρμολόγηση επίπλων',
+          'painting' => 'Βαψίματα',
+          'cleaning' => 'Καθαρισμός',
+          'safety' => 'Ασφάλεια',
+          _ => 'Άλλη υπηρεσία',
+        }
+      : switch (category) {
+          'plumbing' => 'Plumbing',
+          'building_work' => 'Building work',
+          'electrical' => 'Electrical',
+          'furniture_assembly' => 'Furniture assembly',
+          'painting' => 'Painting',
+          'cleaning' => 'Cleaning',
+          'safety' => 'Safety',
+          _ => 'Other service',
+        };
+
   Future<void> _newService() async {
     final title = TextEditingController(),
         desc = TextEditingController(),
         fee = TextEditingController();
     var unit = 'fixed', approved = true;
+    var serviceCategory = 'cleaning';
+    var serviceCategory = 'cleaning';
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -870,6 +894,21 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  DropdownButtonFormField<String>(
+                    value: serviceCategory,
+                    decoration: InputDecoration(labelText: gr ? 'Κατηγορία' : 'Category'),
+                    items: const [
+                      DropdownMenuItem(value: 'plumbing', child: Text('Υδραυλικά / Plumbing')),
+                      DropdownMenuItem(value: 'building_work', child: Text('Οικοδομικά / Building work')),
+                      DropdownMenuItem(value: 'electrical', child: Text('Ηλεκτρολογικά / Electrical')),
+                      DropdownMenuItem(value: 'furniture_assembly', child: Text('Συναρμολόγηση επίπλων / Furniture assembly')),
+                      DropdownMenuItem(value: 'painting', child: Text('Βαψίματα / Painting')),
+                      DropdownMenuItem(value: 'cleaning', child: Text('Καθαρισμός / Cleaning')),
+                      DropdownMenuItem(value: 'safety', child: Text('Ασφάλεια / Safety')),
+                      DropdownMenuItem(value: 'other', child: Text('Άλλη υπηρεσία / Other')),
+                    ],
+                    onChanged: (value) { if (value != null) setDialog(() => serviceCategory = value); },
+                  ),
                   _field(
                     title,
                     gr ? 'Υπηρεσία' : 'Service',
@@ -948,6 +987,7 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
       await _insert('property_management_services', {
         'title': title.text.trim(),
         'description': desc.text.trim(),
+        'service_category': serviceCategory,
         'fee_unit': unit,
         'fee_amount': double.tryParse(fee.text.replaceAll(',', '.')),
         'requires_prior_approval': approved,
@@ -961,7 +1001,7 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
     final services = List<Map<String, dynamic>>.from(
       await db
           .from('property_management_services')
-          .select('id,title')
+          .select('id,title,service_category')
           .eq('property_id', widget.propertyId)
           .eq('active', true)
           .order('title'),
@@ -969,6 +1009,7 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
     if (!mounted) return;
     var serviceId = '';
     var requestType = 'service';
+    var serviceCategory = 'other';
     var priority = 'normal';
     var apartmentNumber = '1';
     final apartmentOptions = List<String>.generate(
@@ -1069,6 +1110,38 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
+                        value: serviceCategory,
+                        decoration: InputDecoration(labelText: gr ? 'Κατηγορία υπηρεσίας / βλάβης' : 'Service / problem category'),
+                        items: const [
+                          DropdownMenuItem(value: 'plumbing', child: Text('Υδραυλικά / Plumbing')),
+                          DropdownMenuItem(value: 'building_work', child: Text('Οικοδομικά / Building work')),
+                          DropdownMenuItem(value: 'electrical', child: Text('Ηλεκτρολογικά / Electrical')),
+                          DropdownMenuItem(value: 'furniture_assembly', child: Text('Συναρμολόγηση επίπλων / Furniture assembly')),
+                          DropdownMenuItem(value: 'painting', child: Text('Βαψίματα / Painting')),
+                          DropdownMenuItem(value: 'cleaning', child: Text('Καθαρισμός / Cleaning')),
+                          DropdownMenuItem(value: 'safety', child: Text('Ασφάλεια / Safety')),
+                          DropdownMenuItem(value: 'other', child: Text('Άλλο / Other')),
+                        ],
+                        onChanged: (value) { if (value != null) setDialog(() => serviceCategory = value); },
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        value: serviceCategory,
+                        decoration: InputDecoration(labelText: gr ? 'Κατηγορία υπηρεσίας / βλάβης' : 'Service / problem category'),
+                        items: const [
+                          DropdownMenuItem(value: 'plumbing', child: Text('Υδραυλικά / Plumbing')),
+                          DropdownMenuItem(value: 'building_work', child: Text('Οικοδομικά / Building work')),
+                          DropdownMenuItem(value: 'electrical', child: Text('Ηλεκτρολογικά / Electrical')),
+                          DropdownMenuItem(value: 'furniture_assembly', child: Text('Συναρμολόγηση επίπλων / Furniture assembly')),
+                          DropdownMenuItem(value: 'painting', child: Text('Βαψίματα / Painting')),
+                          DropdownMenuItem(value: 'cleaning', child: Text('Καθαρισμός / Cleaning')),
+                          DropdownMenuItem(value: 'safety', child: Text('Ασφάλεια / Safety')),
+                          DropdownMenuItem(value: 'other', child: Text('Άλλο / Other')),
+                        ],
+                        onChanged: (value) { if (value != null) setDialog(() => serviceCategory = value); },
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
                         value: priority,
                         decoration: InputDecoration(
                           labelText: gr ? 'Προτεραιότητα' : 'Priority',
@@ -1121,6 +1194,9 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
                             setDialog(() {
                               serviceId = value;
                               if (value.isNotEmpty) {
+                                serviceCategory = services.firstWhere((service) => service['id'] == value)['service_category'] as String? ?? serviceCategory;
+                                serviceCategory =
+                                    services.firstWhere((service) => service['id'] == value)['service_category'] as String? ?? serviceCategory;
                                 title.text =
                                     services.firstWhere(
                                           (service) => service['id'] == value,
@@ -1185,6 +1261,7 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
         'service_id': serviceId.isEmpty ? null : serviceId,
         'apartment_number': apartmentNumber,
         'request_type': requestType,
+        'service_category': serviceCategory,
         'priority': priority,
         'location': location.text.trim(),
         'title': title.text.trim(),
@@ -2346,7 +2423,7 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
             subtitle =
                 '${row['starts_on']} – ${row['ends_on'] ?? (gr ? 'χωρίς λήξη' : 'open end')} · ${row['billing_cycle']} · ${row['status']}';
           } else if (type == 'service') {
-            titleText = row['title'] as String? ?? '';
+            titleText = '${_serviceCategoryLabel(row['service_category'] as String?)} · ${row['title'] as String? ?? ''}';
             subtitle =
                 '${row['fee_amount'] == null ? (gr ? 'Απαιτείται προσφορά' : 'Quote required') : _money((row['fee_amount'] as num))} · ${row['fee_unit']} · ${row['requires_prior_approval'] == true ? (gr ? 'με έγκριση' : 'approval required') : ''}';
           } else if (type == 'resident') {
@@ -2416,7 +2493,7 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
             final apartmentNumber =
                 row['apartment_number'] as String? ?? 'common_area';
             titleText =
-                '$typeLabel · ${row['title']}${serviceTitle == null ? '' : ' · $serviceTitle'}';
+                '$typeLabel · ${_serviceCategoryLabel(row['service_category'] as String?)} · ${row['title']}${serviceTitle == null ? '' : ' · $serviceTitle'}';
             final quote = row['quote_amount'] as num?;
             subtitle =
                 '${apartmentNumber == 'common_area' ? (gr ? 'Κοινόχρηστος χώρος' : 'Common area') : (gr ? 'Διαμέρισμα $apartmentNumber' : 'Apartment $apartmentNumber')} · $priorityLabel${location.isEmpty ? '' : ' · $location'} · ${row['status']}${quote == null ? '' : ' · ${_money(quote)}'}${(row['supplier'] as String? ?? '').isEmpty ? '' : ' · ${row['supplier']}'}${(row['description'] as String? ?? '').isEmpty ? '' : ' · ${row['description']}'}';
