@@ -36,7 +36,7 @@ class _ResidentServiceRequestsScreenState
         await db
             .from('property_service_requests')
             .select(
-              'id,request_type,priority,apartment_number,title,description,status,quote_amount,supplier,created_at',
+              'id,request_type,service_category,priority,apartment_number,title,description,status,quote_amount,supplier,created_at',
             )
             .eq('property_id', widget.propertyId)
             .order('created_at', ascending: false),
@@ -45,7 +45,7 @@ class _ResidentServiceRequestsScreenState
   Future<List<Map<String, dynamic>>> _loadServices() async =>
       List<Map<String, dynamic>>.from(
         await db.rpc(
-          'list_resident_services',
+          'list_resident_services_with_categories',
           params: {'p_property_id': widget.propertyId},
         ),
       );
@@ -74,6 +74,28 @@ class _ResidentServiceRequestsScreenState
           'safety' => 'Safety',
           'other' => 'Other service',
           _ => 'Service',
+        };
+
+  String _serviceCategoryLabel(String? category) => gr
+      ? switch (category) {
+          'plumbing' => 'Υδραυλικά',
+          'building_work' => 'Οικοδομικά',
+          'electrical' => 'Ηλεκτρολογικά',
+          'furniture_assembly' => 'Συναρμολόγηση επίπλων',
+          'painting' => 'Βαψίματα',
+          'cleaning' => 'Καθαρισμός',
+          'safety' => 'Ασφάλεια',
+          _ => 'Άλλη υπηρεσία',
+        }
+      : switch (category) {
+          'plumbing' => 'Plumbing',
+          'building_work' => 'Building work',
+          'electrical' => 'Electrical',
+          'furniture_assembly' => 'Furniture assembly',
+          'painting' => 'Painting',
+          'cleaning' => 'Cleaning',
+          'safety' => 'Safety',
+          _ => 'Other service',
         };
 
   String _priorityLabel(String? priority) => gr
@@ -112,6 +134,7 @@ class _ResidentServiceRequestsScreenState
     var issueScope = 'unit';
     var priority = 'normal';
     var serviceId = '';
+    var serviceCategory = 'plumbing';
     var apartmentNumber = widget.apartmentNumber;
     final title = TextEditingController();
     final description = TextEditingController();
@@ -224,6 +247,22 @@ class _ResidentServiceRequestsScreenState
                         ),
                         const SizedBox(height: 12),
                         DropdownButtonFormField<String>(
+                          initialValue: serviceCategory,
+                          decoration: InputDecoration(labelText: gr ? 'Κατηγορία υπηρεσίας / βλάβης' : 'Service / problem category'),
+                          items: const [
+                            DropdownMenuItem(value: 'plumbing', child: Text('Υδραυλικά / Plumbing')),
+                            DropdownMenuItem(value: 'building_work', child: Text('Οικοδομικά / Building work')),
+                            DropdownMenuItem(value: 'electrical', child: Text('Ηλεκτρολογικά / Electrical')),
+                            DropdownMenuItem(value: 'furniture_assembly', child: Text('Συναρμολόγηση επίπλων / Furniture assembly')),
+                            DropdownMenuItem(value: 'painting', child: Text('Βαψίματα / Painting')),
+                            DropdownMenuItem(value: 'cleaning', child: Text('Καθαρισμός / Cleaning')),
+                            DropdownMenuItem(value: 'safety', child: Text('Ασφάλεια / Safety')),
+                            DropdownMenuItem(value: 'other', child: Text('Άλλο / Other')),
+                          ],
+                          onChanged: (value) { if (value != null) setDialog(() => serviceCategory = value); },
+                        ),
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<String>(
                           initialValue: priority,
                           decoration: InputDecoration(
                             labelText: gr ? 'Προτεραιότητα' : 'Priority',
@@ -272,7 +311,11 @@ class _ResidentServiceRequestsScreenState
                             ],
                             onChanged: (value) {
                               if (value != null) {
-                                setDialog(() => serviceId = value);
+                                setDialog(() {
+                                  serviceId = value;
+                                  final selected = services.firstWhere((s) => s['service_id'] == value);
+                                  serviceCategory = selected['service_category'] as String? ?? 'other';
+                                });
                               }
                             },
                           ),
@@ -332,7 +375,7 @@ class _ResidentServiceRequestsScreenState
       if (submitted != true || !mounted) return;
       setState(() => busy = true);
       await db.rpc(
-        'submit_resident_service_request',
+        'submit_resident_service_request_v2',
         params: {
           'p_property_id': widget.propertyId,
           'p_apartment_number': apartmentNumber,
@@ -343,6 +386,7 @@ class _ResidentServiceRequestsScreenState
           'p_description': description.text.trim(),
           'p_location': location.text.trim(),
           'p_issue_scope': issueScope,
+          'p_service_category': serviceCategory,
         },
       );
       if (!mounted) return;
@@ -467,7 +511,7 @@ class _ResidentServiceRequestsScreenState
                           ),
                           title: Text(row['title'] as String? ?? ''),
                           subtitle: Text(
-                            '${_typeLabel(row['request_type'] as String?)} · ${_priorityLabel(row['priority'] as String?)} · ${_statusLabel(row['status'] as String?)}${row['apartment_number'] == 'common_area' ? (gr ? ' · Κοινόχρηστος χώρος' : ' · Common area') : ''}${row['quote_amount'] == null ? '' : ' · €${row['quote_amount']}'}',
+                            '${_typeLabel(row['request_type'] as String?)} · ${_serviceCategoryLabel(row['service_category'] as String?)} · ${_priorityLabel(row['priority'] as String?)} · ${_statusLabel(row['status'] as String?)}${row['apartment_number'] == 'common_area' ? (gr ? ' · Κοινόχρηστος χώρος' : ' · Common area') : ''}${row['quote_amount'] == null ? '' : ' · €${row['quote_amount']}'}',
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
