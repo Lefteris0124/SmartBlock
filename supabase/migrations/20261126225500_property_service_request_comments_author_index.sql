@@ -1,0 +1,1 @@
+CREATE INDEX IF NOT EXISTS property_service_request_comments_author_idx ON public.property_service_request_comments(author_id);
