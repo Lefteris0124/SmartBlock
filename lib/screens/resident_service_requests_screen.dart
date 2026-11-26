@@ -342,42 +342,6 @@ class _ResidentServiceRequestsScreenState
                           },
                         ),
                         const SizedBox(height: 12),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            ListTile(
-                              contentPadding: EdgeInsets.zero,
-                              leading: const Icon(Icons.category_outlined),
-                              title: Text(gr ? 'Κατηγορία αναφοράς' : 'Report category'),
-                              subtitle: Text(gr ? 'Πάτησε την κάρτα που ταιριάζει.' : 'Tap the card that fits best.'),
-                            ),
-                            GridView.count(
-                              crossAxisCount: 2,
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              crossAxisSpacing: 8,
-                              mainAxisSpacing: 8,
-                              childAspectRatio: 1.08,
-                              children: [
-                                for (final category in const [
-                                  'plumbing',
-                                  'building_work',
-                                  'electrical',
-                                  'furniture_assembly',
-                                  'painting',
-                                  'cleaning',
-                                  'safety',
-                                  'other',
-                                ])
-                                  _serviceCategoryCard(
-                                    category,
-                                    serviceCategory == category,
-                                    () => setDialog(() => serviceCategory = category),
-                                  ),
-                              ],
-                            ),
-                          ],
-                        ),
                         const SizedBox(height: 12),
                         DropdownButtonFormField<String>(
                           initialValue: priority,
