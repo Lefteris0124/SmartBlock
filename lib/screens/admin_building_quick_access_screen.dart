@@ -63,6 +63,35 @@ class _AdminBuildingQuickAccessScreenState
         });
       }
     } catch (_) {}
+    final userId = _client.auth.currentUser?.id;
+    if (userId != null) {
+      try {
+        final unread = List<Map<String, dynamic>>.from(
+          await _client
+              .from('user_notifications')
+              .select('property_id,notification_type')
+              .eq('user_id', userId)
+              .eq('is_read', false)
+              .inFilter('notification_type', [
+                'vote',
+                'announcement',
+                'community_update',
+              ]),
+        );
+        for (final row in unread) {
+          final property = byId[row['property_id']?.toString()];
+          if (property == null) continue;
+          final key = row['notification_type'] == 'vote'
+              ? '_unread_votes'
+              : '_unread_notices';
+          property[key] = ((property[key] as int?) ?? 0) + 1;
+        }
+      } catch (_) {}
+    }
+    for (final property in byId.values) {
+      property['_unread_votes'] ??= 0;
+      property['_unread_notices'] ??= 0;
+    }
     final result = byId.values.toList()
       ..sort((a, b) => (a['name'] ?? '')
           .toString()
@@ -71,19 +100,41 @@ class _AdminBuildingQuickAccessScreenState
     return result;
   }
 
-  void _openPropertyModule(Map<String, dynamic> property, int tab) {
-    Navigator.of(context).push(
+  Future<void> _openPropertyModule(
+    Map<String, dynamic> property,
+    int tab,
+  ) async {
+    final propertyId = property['id'].toString();
+    final userId = _client.auth.currentUser?.id;
+    if (userId != null && (tab == 0 || tab == 1)) {
+      try {
+        await _client
+            .from('user_notifications')
+            .update({'is_read': true})
+            .eq('user_id', userId)
+            .eq('property_id', propertyId)
+            .eq('is_read', false)
+            .inFilter(
+              'notification_type',
+              tab == 0 ? ['vote'] : ['announcement', 'community_update'],
+            );
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => PropertyModulesScreen(
-          propertyId: property['id'].toString(),
+          propertyId: propertyId,
           propertyName: (property['name'] ??
                   (_gr ? 'Πολυκατοικία' : 'Building'))
               .toString(),
           isGreek: _gr,
           initialTab: tab,
+          initialNoticeType: 'official_announcement',
         ),
       ),
     );
+    if (mounted) setState(() => _properties = _loadProperties());
   }
 
   @override
@@ -220,21 +271,41 @@ class _AdminBuildingQuickAccessScreenState
                                       runSpacing: 4,
                                       children: [
                                         ActionChip(
-                                          avatar: const Icon(
-                                              Icons.how_to_vote_outlined,
-                                              size: 18),
+                                          avatar: Badge(
+                                            backgroundColor: Colors.red,
+                                            isLabelVisible:
+                                                (property['_unread_votes'] as int? ?? 0) > 0,
+                                            label: Text(
+                                              (property['_unread_votes'] as int? ?? 0) > 9
+                                                  ? '9+'
+                                                  : '${property['_unread_votes'] ?? 0}',
+                                            ),
+                                            child: const Icon(
+                                                Icons.how_to_vote_outlined,
+                                                size: 18),
+                                          ),
                                           label:
                                               Text(_gr ? 'Ψηφοφορίες' : 'Votes'),
                                           onPressed: () =>
                                               _openPropertyModule(property, 0),
                                         ),
                                         ActionChip(
-                                          avatar: const Icon(
-                                              Icons.campaign_outlined,
-                                              size: 18),
+                                          avatar: Badge(
+                                            backgroundColor: Colors.red,
+                                            isLabelVisible:
+                                                (property['_unread_notices'] as int? ?? 0) > 0,
+                                            label: Text(
+                                              (property['_unread_notices'] as int? ?? 0) > 9
+                                                  ? '9+'
+                                                  : '${property['_unread_notices'] ?? 0}',
+                                            ),
+                                            child: const Icon(
+                                                Icons.campaign_outlined,
+                                                size: 18),
+                                          ),
                                           label: Text(_gr
-                                              ? 'Ανακοινώσεις'
-                                              : 'Announcements'),
+                                              ? 'Ανακοινώσεις / ενημερώσεις'
+                                              : 'Notices / updates'),
                                           onPressed: () =>
                                               _openPropertyModule(property, 1),
                                         ),
