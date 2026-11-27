@@ -37,6 +37,7 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
   late final VoidCallback _languageListener;
   late Future<List<Map<String, dynamic>>> _billingNotices;
   late Future<List<Map<String, dynamic>>> _userNotifications;
+  late Future<List<Map<String, dynamic>>> _homeProperties;
 
   @override
   void initState() {
@@ -49,6 +50,7 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
     language.selected.addListener(_languageListener);
     _billingNotices = _loadBillingNotices();
     _userNotifications = _loadUserNotifications();
+    _homeProperties = _loadHomeProperties();
     _refreshDueNotifications();
     _subscribeUserNotifications();
     _subscribeAdminNotifications();
@@ -307,6 +309,54 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
       isGreek: _greek,
       initialSection: focus,
     );
+  }
+
+  Future<List<Map<String, dynamic>>> _loadHomeProperties() async {
+    final byId = <String, Map<String, dynamic>>{};
+    // RLS restricts this list to properties visible to the signed-in account.
+    try {
+      final rows = List<Map<String, dynamic>>.from(
+        await _client
+            .from('properties')
+            .select('id,name,address,city')
+            .order('name'),
+      );
+      for (final row in rows) {
+        byId[row['id'].toString()] = row;
+      }
+    } catch (_) {}
+    // Resident access is exposed through the approved, apartment-scoped RPC.
+    try {
+      final residents = List<Map<String, dynamic>>.from(
+        await _client.rpc('list_my_resident_properties'),
+      );
+      for (final row in residents) {
+        final id = row['property_id']?.toString();
+        if (id == null) continue;
+        byId.putIfAbsent(id, () => {
+          'id': id,
+          'name': row['property_name'] ?? (_greek ? 'Πολυκατοικία' : 'Building'),
+          'address': row['property_address'],
+          'city': row['property_city'],
+        });
+      }
+    } catch (_) {}
+    final result = byId.values.toList()
+      ..sort((a, b) => (a['name'] ?? '').toString().compareTo((b['name'] ?? '').toString()));
+    return result;
+  }
+
+  void _openPropertyModule(Map<String, dynamic> property, int tab) {
+    final id = property['id']?.toString();
+    if (id == null) return;
+    final name = (property['name'] ??
+        (_greek ? 'Πολυκατοικία' : 'Building')).toString();
+    _open(PropertyModulesScreen(
+      propertyId: id,
+      propertyName: name,
+      isGreek: _greek,
+      initialTab: tab,
+    ));
   }
 
   Future<void> _openSupportNotification(
@@ -892,10 +942,10 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
       try {
         final preferences = await SharedPreferences.getInstance();
         if (preferences.getBool(_tutorialPreferenceKey) == true) return;
-        final completed = await _showTutorial(access);
-        if (completed == true) {
-          await preferences.setBool(_tutorialPreferenceKey, true);
-        }
+        // Mark before opening: skip, finish, or closing the app must never
+        // cause the first-use guide to interrupt the next sign-in.
+        await preferences.setBool(_tutorialPreferenceKey, true);
+        await _showTutorial(access);
       } catch (_) {
         // The dashboard and the persistent Instructions button remain usable.
       }
@@ -1119,6 +1169,91 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
               ),
             ),
             const SizedBox(height: 20),
+            if (showOwner || showResident)
+              FutureBuilder<List<Map<String, dynamic>>>(
+                future: _homeProperties,
+                builder: (context, propertySnapshot) {
+                  final properties = propertySnapshot.data ?? const [];
+                  if (properties.isEmpty) return const SizedBox.shrink();
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Text(
+                          _greek ? 'Γρήγορη πρόσβαση' : 'Quick access',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF17364A),
+                          ),
+                        ),
+                      ),
+                      ...properties.map((property) {
+                        final name = (property['name'] ??
+                          (_greek ? 'Πολυκατοικία' : 'Building')).toString();
+                        final address = [
+                          property['address'],
+                          property['city'],
+                        ].where((part) => part != null && part.toString().trim().isNotEmpty)
+                         .join(', ');
+                        return Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(Icons.apartment_rounded,
+                                      color: Theme.of(context).colorScheme.primary),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(name,
+                                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                              fontWeight: FontWeight.w700,
+                                            )),
+                                          if (address.isNotEmpty)
+                                            Text(address,
+                                              style: Theme.of(context).textTheme.bodySmall),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    ActionChip(
+                                      avatar: const Icon(Icons.how_to_vote_outlined, size: 18),
+                                      label: Text(_greek ? 'Ψηφοφορίες' : 'Votes'),
+                                      onPressed: () => _openPropertyModule(property, 0),
+                                    ),
+                                    ActionChip(
+                                      avatar: const Icon(Icons.campaign_outlined, size: 18),
+                                      label: Text(_greek ? 'Ανακοινώσεις' : 'Announcements'),
+                                      onPressed: () => _openPropertyModule(property, 1),
+                                    ),
+                                    ActionChip(
+                                      avatar: const Icon(Icons.account_balance_wallet_outlined, size: 18),
+                                      label: Text(_greek ? 'Οικονομική επισκόπηση' : 'Financial overview'),
+                                      onPressed: () => _openPropertyModule(property, 4),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }),
+                    ],
+                  );
+                },
+              ),
             if (access.isAdmin)
               _RoleCard(
                 icon: Icons.visibility_outlined,
