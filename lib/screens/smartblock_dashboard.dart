@@ -263,17 +263,18 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
 
     final moduleTab = switch (relatedType) {
       'property_votes' => 0,
-      'property_notes' => 1,
-      'property_charge_entries' || 'property_charge_runs' => 2,
-      'property_rent_installments' || 'property_rent_contracts' => 3,
+      'property_notes' => type == 'community_update' ? 2 : 1,
+      'property_charge_entries' || 'property_charge_runs' => 3,
+      'property_rent_installments' || 'property_rent_contracts' => 4,
       _ => switch (type) {
         'vote' => 0,
         'announcement' => 1,
+        'community_update' => 2,
         'charges_due' ||
         'charges_overdue' ||
         'building_charges_due' ||
-        'building_charges_overdue' => 2,
-        'rent_due' || 'rent_overdue' => 3,
+        'building_charges_overdue' => 3,
+        'rent_due' || 'rent_overdue' => 4,
         _ => -1,
       },
     };
@@ -284,9 +285,6 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
           propertyName: await _propertyName(propertyId),
           isGreek: _greek,
           initialTab: moduleTab,
-          initialNoticeType: type == 'community_update'
-              ? 'community_update'
-              : 'official_announcement',
         ),
       );
     } else {
