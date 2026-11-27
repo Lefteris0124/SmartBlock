@@ -13,6 +13,7 @@ import 'resident_contracts_screen.dart';
 import 'support_chat_screen.dart';
 import 'role_preview_screen.dart';
 import 'property_modules_screen.dart';
+import 'admin_building_quick_access_screen.dart';
 import 'property_management_screen.dart';
 import 'resident_service_requests_screen.dart';
 import '../app_language.dart';
@@ -1232,8 +1233,19 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
               ),
             ),
             const SizedBox(height: 20),
-            if (showOwner || showResident)
-              FutureBuilder<List<Map<String, dynamic>>>(
+            if (access.isAdmin || access.isStaff)
+              _RoleCard(
+                icon: Icons.folder_open_outlined,
+                title: _greek ? 'Γρήγορη πρόσβαση' : 'Quick access',
+                detail: _greek
+                    ? 'Αναζήτησε πολυκατοικία και άνοιξε ψηφοφορίες, ανακοινώσεις ή οικονομικά.'
+                    : 'Search buildings and open votes, announcements or finances.',
+                onTap: () => _open(
+                  AdminBuildingQuickAccessScreen(isGreek: _greek),
+                ),
+              )
+            else if (showOwner || showResident)
+FutureBuilder<List<Map<String, dynamic>>>(
                 future: _homeProperties,
                 builder: (context, propertySnapshot) {
                   final properties = propertySnapshot.data ?? const [];
