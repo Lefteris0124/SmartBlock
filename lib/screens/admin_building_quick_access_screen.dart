@@ -1,0 +1,265 @@
+import 'package:flutter/material.dart' hide Text;
+
+import '../smartblock_trial_session.dart';
+import '../smartblock_text.dart';
+import 'property_modules_screen.dart';
+
+class AdminBuildingQuickAccessScreen extends StatefulWidget {
+  const AdminBuildingQuickAccessScreen({required this.isGreek, super.key});
+
+  final bool isGreek;
+
+  @override
+  State<AdminBuildingQuickAccessScreen> createState() =>
+      _AdminBuildingQuickAccessScreenState();
+}
+
+class _AdminBuildingQuickAccessScreenState
+    extends State<AdminBuildingQuickAccessScreen> {
+  final _client = SmartBlockTrialSession.client;
+  final _search = TextEditingController();
+  late Future<List<Map<String, dynamic>>> _properties;
+
+  bool get _gr => widget.isGreek;
+
+  @override
+  void initState() {
+    super.initState();
+    _properties = _loadProperties();
+    _search.addListener(() {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  Future<List<Map<String, dynamic>>> _loadProperties() async {
+    final byId = <String, Map<String, dynamic>>{};
+    final rows = List<Map<String, dynamic>>.from(
+      await _client
+          .from('properties')
+          .select('id,name,address,city')
+          .order('name'),
+    );
+    for (final row in rows) {
+      byId[row['id'].toString()] = row;
+    }
+    try {
+      final residentRows = List<Map<String, dynamic>>.from(
+        await _client.rpc('list_my_resident_properties'),
+      );
+      for (final row in residentRows) {
+        final id = row['property_id']?.toString();
+        if (id == null) continue;
+        byId.putIfAbsent(id, () => {
+          'id': id,
+          'name': row['property_name'] ?? (_gr ? 'Πολυκατοικία' : 'Building'),
+          'address': row['property_address'],
+          'city': row['property_city'],
+        });
+      }
+    } catch (_) {}
+    final result = byId.values.toList()
+      ..sort((a, b) => (a['name'] ?? '')
+          .toString()
+          .toLowerCase()
+          .compareTo((b['name'] ?? '').toString().toLowerCase()));
+    return result;
+  }
+
+  void _openPropertyModule(Map<String, dynamic> property, int tab) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PropertyModulesScreen(
+          propertyId: property['id'].toString(),
+          propertyName: (property['name'] ??
+                  (_gr ? 'Πολυκατοικία' : 'Building'))
+              .toString(),
+          isGreek: _gr,
+          initialTab: tab,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(
+          title: Text(_gr ? 'Πολυκατοικίες' : 'Buildings'),
+        ),
+        body: FutureBuilder<List<Map<String, dynamic>>>(
+          future: _properties,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.cloud_off_outlined, size: 40),
+                      const SizedBox(height: 12),
+                      Text(_gr
+                          ? 'Δεν φορτώθηκε η λίστα πολυκατοικιών.'
+                          : 'Could not load the building list.'),
+                      const SizedBox(height: 12),
+                      FilledButton.tonal(
+                        onPressed: () =>
+                            setState(() => _properties = _loadProperties()),
+                        child: Text(_gr ? 'Δοκίμασε ξανά' : 'Try again'),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+            final all = snapshot.data ?? const [];
+            final query = _search.text.trim().toLowerCase();
+            final filtered = all.where((property) {
+              if (query.isEmpty) return true;
+              final searchable = [
+                property['name'],
+                property['address'],
+                property['city'],
+              ].whereType<Object>().join(' ').toLowerCase();
+              return searchable.contains(query);
+            }).toList();
+
+            return Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+                  child: TextField(
+                    controller: _search,
+                    textInputAction: TextInputAction.search,
+                    decoration: InputDecoration(
+                      labelText: _gr
+                          ? 'Αναζήτηση με όνομα ή διεύθυνση'
+                          : 'Search by name or address',
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: _search.text.isEmpty
+                          ? null
+                          : IconButton(
+                              tooltip: _gr ? 'Καθαρισμός' : 'Clear',
+                              onPressed: _search.clear,
+                              icon: const Icon(Icons.close),
+                            ),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 2, 18, 8),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      _gr
+                          ? '${filtered.length} από ${all.length} πολυκατοικίες'
+                          : '${filtered.length} of ${all.length} buildings',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: filtered.isEmpty
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Text(query.isEmpty
+                                ? (_gr
+                                    ? 'Δεν υπάρχουν διαθέσιμες πολυκατοικίες.'
+                                    : 'No buildings are available.')
+                                : (_gr
+                                    ? 'Δεν βρέθηκε πολυκατοικία με αυτά τα στοιχεία.'
+                                    : 'No building matched your search.')),
+                          ),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 20),
+                          itemCount: filtered.length,
+                          itemBuilder: (context, index) {
+                            final property = filtered[index];
+                            final name = (property['name'] ??
+                                    (_gr ? 'Πολυκατοικία' : 'Building'))
+                                .toString();
+                            final address = [
+                              property['address'],
+                              property['city'],
+                            ]
+                                .where((part) =>
+                                    part != null &&
+                                    part.toString().trim().isNotEmpty)
+                                .join(', ');
+                            return Card(
+                              child: Padding(
+                                padding: const EdgeInsets.all(14),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    ListTile(
+                                      contentPadding: EdgeInsets.zero,
+                                      leading: const Icon(
+                                          Icons.apartment_rounded),
+                                      title: Text(
+                                        name,
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.w700),
+                                      ),
+                                      subtitle: address.isEmpty
+                                          ? null
+                                          : Text(address),
+                                    ),
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 4,
+                                      children: [
+                                        ActionChip(
+                                          avatar: const Icon(
+                                              Icons.how_to_vote_outlined,
+                                              size: 18),
+                                          label:
+                                              Text(_gr ? 'Ψηφοφορίες' : 'Votes'),
+                                          onPressed: () =>
+                                              _openPropertyModule(property, 0),
+                                        ),
+                                        ActionChip(
+                                          avatar: const Icon(
+                                              Icons.campaign_outlined,
+                                              size: 18),
+                                          label: Text(_gr
+                                              ? 'Ανακοινώσεις'
+                                              : 'Announcements'),
+                                          onPressed: () =>
+                                              _openPropertyModule(property, 1),
+                                        ),
+                                        ActionChip(
+                                          avatar: const Icon(
+                                              Icons.account_balance_wallet_outlined,
+                                              size: 18),
+                                          label: Text(_gr
+                                              ? 'Οικονομικά'
+                                              : 'Finances'),
+                                          onPressed: () =>
+                                              _openPropertyModule(property, 4),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+}
