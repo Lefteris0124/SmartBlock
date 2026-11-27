@@ -81,16 +81,19 @@ class _AdminBuildingQuickAccessScreenState
         for (final row in unread) {
           final property = byId[row['property_id']?.toString()];
           if (property == null) continue;
-          final key = row['notification_type'] == 'vote'
-              ? '_unread_votes'
-              : '_unread_notices';
+          final key = switch (row['notification_type']) {
+            'vote' => '_unread_votes',
+            'announcement' => '_unread_announcements',
+            _ => '_unread_updates',
+          };
           property[key] = ((property[key] as int?) ?? 0) + 1;
         }
       } catch (_) {}
     }
     for (final property in byId.values) {
       property['_unread_votes'] ??= 0;
-      property['_unread_notices'] ??= 0;
+      property['_unread_announcements'] ??= 0;
+      property['_unread_updates'] ??= 0;
     }
     final result = byId.values.toList()
       ..sort((a, b) => (a['name'] ?? '')
@@ -106,7 +109,7 @@ class _AdminBuildingQuickAccessScreenState
   ) async {
     final propertyId = property['id'].toString();
     final userId = _client.auth.currentUser?.id;
-    if (userId != null && (tab == 0 || tab == 1)) {
+    if (userId != null && (tab == 0 || tab == 1 || tab == 2)) {
       try {
         await _client
             .from('user_notifications')
@@ -116,7 +119,11 @@ class _AdminBuildingQuickAccessScreenState
             .eq('is_read', false)
             .inFilter(
               'notification_type',
-              tab == 0 ? ['vote'] : ['announcement', 'community_update'],
+              switch (tab) {
+                0 => ['vote'],
+                1 => ['announcement'],
+                _ => ['community_update'],
+              },
             );
       } catch (_) {}
     }
@@ -130,7 +137,6 @@ class _AdminBuildingQuickAccessScreenState
               .toString(),
           isGreek: _gr,
           initialTab: tab,
-          initialNoticeType: 'official_announcement',
         ),
       ),
     );
@@ -293,31 +299,38 @@ class _AdminBuildingQuickAccessScreenState
                                           avatar: Badge(
                                             backgroundColor: Colors.red,
                                             isLabelVisible:
-                                                (property['_unread_notices'] as int? ?? 0) > 0,
+                                                (property['_unread_announcements'] as int? ?? 0) > 0,
                                             label: Text(
-                                              (property['_unread_notices'] as int? ?? 0) > 9
+                                              (property['_unread_announcements'] as int? ?? 0) > 9
                                                   ? '9+'
-                                                  : '${property['_unread_notices'] ?? 0}',
+                                                  : '${property['_unread_announcements'] ?? 0}',
                                             ),
-                                            child: const Icon(
-                                                Icons.campaign_outlined,
-                                                size: 18),
+                                            child: const Icon(Icons.campaign_outlined, size: 18),
                                           ),
-                                          label: Text(_gr
-                                              ? 'Ανακοινώσεις / ενημερώσεις'
-                                              : 'Notices / updates'),
-                                          onPressed: () =>
-                                              _openPropertyModule(property, 1),
+                                          label: Text(_gr ? 'Ανακοινώσεις' : 'Announcements'),
+                                          onPressed: () => _openPropertyModule(property, 1),
                                         ),
                                         ActionChip(
-                                          avatar: const Icon(
-                                              Icons.account_balance_wallet_outlined,
-                                              size: 18),
+                                          avatar: Badge(
+                                            backgroundColor: Colors.red,
+                                            isLabelVisible:
+                                                (property['_unread_updates'] as int? ?? 0) > 0,
+                                            label: Text(
+                                              (property['_unread_updates'] as int? ?? 0) > 9
+                                                  ? '9+'
+                                                  : '${property['_unread_updates'] ?? 0}',
+                                            ),
+                                            child: const Icon(Icons.chat_bubble_outline, size: 18),
+                                          ),
+                                          label: Text(_gr ? 'Ενημερώσεις' : 'Updates'),
+                                          onPressed: () => _openPropertyModule(property, 2),
+                                        ),
+                                        ActionChip(
+                                          avatar: const Icon(Icons.receipt_long_outlined, size: 18),
                                           label: Text(_gr
-                                              ? 'Οικονομικά'
-                                              : 'Finances'),
-                                          onPressed: () =>
-                                              _openPropertyModule(property, 4),
+                                              ? 'Λογιστική κατάσταση'
+                                              : 'Accounting statement'),
+                                          onPressed: () => _openPropertyModule(property, 5),
                                         ),
                                       ],
                                     ),
