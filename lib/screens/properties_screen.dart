@@ -856,7 +856,7 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
               Text(
                 _greek
                     ? 'Άνοιξε ένα ακίνητο για να δεις τους ιδιοκτήτες, τις ψηφοφορίες, τις ανακοινώσεις και τα οικονομικά του.'
-                    : 'Open a property to see its owners, votes, notices and finances.',
+                    : 'Open a property to see its owners, votes, announcements, resident updates and accounting statement.',
               ),
               const SizedBox(height: 20),
               if (snapshot.connectionState == ConnectionState.waiting)
