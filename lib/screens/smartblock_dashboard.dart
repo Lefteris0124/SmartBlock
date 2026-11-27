@@ -469,22 +469,27 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
                         ),
                       ],
                     ),
-                    if (notifications.any((item) => item['is_read'] != true))
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton.icon(
-                          onPressed: () async {
-                            await _markAllNotificationsRead();
-                            if (sheetContext.mounted) {
-                              Navigator.of(sheetContext).pop();
-                            }
-                          },
-                          icon: const Icon(Icons.done_all),
-                          label: Text(
-                            _greek ? 'Όλα αναγνωσμένα' : 'Mark all as read',
-                          ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: notifications.any(
+                          (item) => item['is_read'] != true,
+                        )
+                            ? () async {
+                                await _markAllNotificationsRead();
+                                if (sheetContext.mounted) {
+                                  Navigator.of(sheetContext).pop();
+                                }
+                              }
+                            : null,
+                        icon: const Icon(Icons.done_all),
+                        label: Text(
+                          _greek
+                              ? 'Σήμανση όλων ως αναγνωσμένων'
+                              : 'Mark all as read',
                         ),
                       ),
+                    ),
                   ],
                 ),
               ),
