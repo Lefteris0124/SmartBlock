@@ -200,10 +200,12 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
     final starts = TextEditingController();
     final ends = TextEditingController();
     final ownerTerms = TextEditingController(text: ownerDefaultTerms);
+    final unitFurniture = unit['furniture_details']?.toString().trim() ?? '';
     final furnitureInventory = TextEditingController(
-      text: ownerFurnitureDefault.isNotEmpty
-          ? ownerFurnitureDefault
-          : (unit['furniture_details']?.toString() ?? ''),
+      text: [ownerFurnitureDefault, unitFurniture]
+          .where((value) => value.isNotEmpty)
+          .toSet()
+          .join('\n\n'),
     );
     final leaseOnlyTerms = TextEditingController();
     final form = GlobalKey<FormState>();
@@ -229,7 +231,7 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
                   dense: true,
                   leading: const Icon(Icons.location_city_outlined),
                   title: Text(widget.propertyName, style: const TextStyle(fontWeight: FontWeight.w700)),
-                  subtitle: Text('${propertyAddress.isEmpty ? t('Διεύθυνση δεν έχει καταχωρηθεί', 'Address not recorded') : propertyAddress}\\n${t('Αριθμός διαμερίσματος', 'Apartment number')}: ${unit['apartment_number']}'),
+                  subtitle: Text('${propertyAddress.isEmpty ? t('Διεύθυνση δεν έχει καταχωρηθεί', 'Address not recorded') : propertyAddress}\n${t('Αριθμός διαμερίσματος', 'Apartment number')}: ${unit['apartment_number']}'),
                 ),
               ),
               const SizedBox(height: 6),
@@ -610,7 +612,7 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
                   t('Ονομασία πολυκατοικίας', 'Building name'): widget.propertyName,
                   t('Διεύθυνση ακινήτου', 'Property address'): propertyAddress.isEmpty ? '—' : propertyAddress,
                   t('Αριθμός διαμερίσματος', 'Apartment number'): '${unit['apartment_number']}',
-                  t('Χώρος', 'Unit details'): '${unit['room_count']} ${t('δωμάτια', 'rooms')} · ${unit['area_sqm']} m² · ${unit['furnished'] == true ? t('Επιπλωμένο', 'Furnished') : t('Μη επιπλωμένο', 'Unfurnished')}',
+                  t('Χώρος', 'Unit details'): '${unit['room_count']} ${t('δωμάτια', 'rooms')} · ${unit['area_sqm']} m² · ${furnitureInventory.text.trim().isNotEmpty ? t('Επιπλωμένο', 'Furnished') : t('Μη επιπλωμένο', 'Unfurnished')}',
                   t('Ιδιοκτήτης', 'Owner'): ownerName.text.trim(),
                   t('Έγγραφο ιδιοκτήτη', 'Owner document'): '${ownerIdType == 'passport' ? t('Διαβατήριο', 'Passport') : t('Ταυτότητα', 'National ID')} · ${ownerIdCountry.text.trim()} · ${ownerIdNo.text.trim()} · ${t('λήγει', 'expires')} ${ownerIdExpiry.text}',
                   t('Ενοικιαστής', 'Tenant'): tenantName.text.trim(),
@@ -661,7 +663,7 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
           'p_start_date': starts.text,
           'p_end_date': ends.text,
           'p_rent_due_day': dueDay,
-          'p_furniture_and_inventory': '${unit['furnished'] == true ? t('Επιπλωμένο', 'Furnished') : t('Μη επιπλωμένο', 'Unfurnished')}: ${furnitureInventory.text.trim()}',
+          'p_furniture_and_inventory': '${furnitureInventory.text.trim().isNotEmpty ? t('Επιπλωμένο', 'Furnished') : t('Μη επιπλωμένο', 'Unfurnished')}: ${furnitureInventory.text.trim()}',
           'p_included_services': '',
           'p_special_terms': [
             ownerTerms.text.trim(),
@@ -687,7 +689,7 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
         }
         final url = Uri.https('lefteris0124.github.io', '/SmartBlock/', {'lease_invite': token});
         final subject = Uri.encodeComponent(t('Πρόσκληση για το μισθωτήριο SmartBlock', 'SmartBlock lease invitation'));
-        final body = Uri.encodeComponent(t('Γεια σας ${tenantName.text.trim()},\\n\\nΟ ιδιοκτήτης σάς προσκαλεί να δείτε και να υπογράψετε ηλεκτρονικά το μισθωτήριο για το διαμέρισμα ${unit['apartment_number']}. Συνδεθείτε/εγγραφείτε με το email ${tenantEmail.text.trim()} από τον σύνδεσμο:\\n$url\\n\\nΑφού υπογράψετε, το συμβόλαιο θα επιστρέψει στον ιδιοκτήτη για τελική έγκριση.', 'Hello ${tenantName.text.trim()},\\n\\nThe owner invites you to review and sign the lease for apartment ${unit['apartment_number']}. Sign up or log in with ${tenantEmail.text.trim()} using this link:\\n$url\\n\\nAfter signing, the lease returns to the owner for final approval.'));
+        final body = Uri.encodeComponent(t('Γεια σας ${tenantName.text.trim()},\n\nΟ ιδιοκτήτης σάς προσκαλεί να δείτε και να υπογράψετε ηλεκτρονικά το μισθωτήριο για το διαμέρισμα ${unit['apartment_number']}. Συνδεθείτε/εγγραφείτε με το email ${tenantEmail.text.trim()} από τον σύνδεσμο:\n$url\n\nΑφού υπογράψετε, το συμβόλαιο θα επιστρέψει στον ιδιοκτήτη για τελική έγκριση.', 'Hello ${tenantName.text.trim()},\n\nThe owner invites you to review and sign the lease for apartment ${unit['apartment_number']}. Sign up or log in with ${tenantEmail.text.trim()} using this link:\n$url\n\nAfter signing, the lease returns to the owner for final approval.'));
         final mail = Uri(scheme: 'mailto', path: tenantEmail.text.trim(), query: 'subject=$subject&body=$body');
         try {
           await db.functions.invoke('send-lease-invitation', body: {'offer_id': offerId, 'token': token});
@@ -890,7 +892,7 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
       final approve = await showDialog<bool>(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx, setDialog) => AlertDialog(
         title: Text(t('Τελικός έλεγχος συμβολαίου', 'Final lease review')),
         content: SizedBox(width: 520, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('${offer['property_name'] ?? ''} · ${offer['unit_reference']}\\n${offer['property_address'] ?? ''}'),
+          Text('${offer['property_name'] ?? ''} · ${offer['unit_reference']}\n${offer['property_address'] ?? ''}'),
           Text('${offer['tenant_name']} · ${offer['tenant_email']}'),
           Text('${offer['start_date']} – ${offer['end_date']}'),
           Text('${t('Ενοίκιο','Rent')}: €${offer['monthly_rent']} · ${t('Εγγύηση','Deposit')}: €${offer['deposit_amount']} · ${t('Κοινόχρηστα','Common charges')}: €${offer['common_charges']}'),
