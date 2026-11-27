@@ -13,13 +13,11 @@ class PropertyModulesScreen extends StatefulWidget {
     required this.propertyName,
     required this.isGreek,
     this.initialTab = 0,
-    this.initialNoticeType = 'official_announcement',
     super.key,
   });
   final String propertyId, propertyName;
   final bool isGreek;
   final int initialTab;
-  final String initialNoticeType;
   @override
   State<PropertyModulesScreen> createState() => _PropertyModulesScreenState();
 }
@@ -28,20 +26,18 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     with SingleTickerProviderStateMixin {
   final db = SmartBlockTrialSession.client;
   late final tabs = TabController(
-    length: 5,
+    length: 6,
     vsync: this,
-    initialIndex: widget.initialTab.clamp(0, 4).toInt(),
+    initialIndex: widget.initialTab.clamp(0, 5).toInt(),
   );
   bool busy = false;
   bool isAdmin = false;
   bool canManageProperty = false;
-  String _noteFilter = 'official_announcement';
   bool get gr => widget.isGreek;
 
   @override
   void initState() {
     super.initState();
-    _noteFilter = widget.initialNoticeType;
     _loadAdminAccess();
   }
 
@@ -1533,41 +1529,12 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
         : null;
   }
 
-  Future<void> createNote() async {
-    var postType = 'community_update';
-    if (canManageProperty) {
-      final selectedType = await showDialog<String>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text(gr ? 'Τι θέλεις να δημοσιεύσεις;' : 'Choose a post type'),
-          content: Text(gr
-              ? 'Οι επίσημες ανακοινώσεις δημοσιεύονται από τον πρόεδρο ή τον διαχειριστή. Οι ενημερώσεις είναι διαθέσιμες σε όλους τους ενοίκους.'
-              : 'Official announcements are posted by the building president or manager. Resident updates are available to all residents.'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text(gr ? 'Άκυρο' : 'Cancel'),
-            ),
-            OutlinedButton.icon(
-              onPressed: () => Navigator.pop(ctx, 'community_update'),
-              icon: const Icon(Icons.chat_bubble_outline),
-              label: Text(gr ? 'Ενημέρωση ενοίκων' : 'Resident update'),
-            ),
-            FilledButton.icon(
-              onPressed: () => Navigator.pop(ctx, 'official_announcement'),
-              icon: const Icon(Icons.campaign_outlined),
-              label: Text(gr ? 'Επίσημη ανακοίνωση' : 'Official announcement'),
-            ),
-          ],
-        ),
-      );
-      if (selectedType == null) return;
-      postType = selectedType;
-    }
+  Future<void> createNote(String postType) async {
+    final official = postType == 'official_announcement';
+    if (official && !canManageProperty) return;
 
     final controller = TextEditingController();
     final key = GlobalKey<FormState>();
-    final official = postType == 'official_announcement';
     final saved = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1585,9 +1552,7 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
               labelText: gr ? 'Μήνυμα' : 'Message',
               hintText: official
                   ? (gr ? 'Γράψε την ανακοίνωση της πολυκατοικίας' : 'Write a building announcement')
-                  : (gr
-                      ? 'π.χ. Απόψε θα κάνουμε πάρτι'
-                      : 'e.g. We are having a party tonight'),
+                  : (gr ? 'π.χ. Απόψε θα κάνουμε πάρτι' : 'e.g. We are having a party tonight'),
             ),
             validator: (value) => value == null || value.trim().isEmpty
                 ? (gr ? 'Γράψε ένα μήνυμα.' : 'Enter a message.')
@@ -1623,11 +1588,12 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     controller.dispose();
   }
 
-  Widget notesListing() => FutureBuilder<List<Map<String, dynamic>>>(
+  Widget notesListing(String postType) => FutureBuilder<List<Map<String, dynamic>>>(
     future: db
         .from('property_notes')
         .select('id, body, created_at, created_by, post_type')
         .eq('property_id', widget.propertyId)
+        .eq('post_type', postType)
         .order('created_at', ascending: false)
         .then((rows) => List<Map<String, dynamic>>.from(rows)),
     builder: (context, snapshot) {
@@ -1635,118 +1601,106 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
         return const Center(child: CircularProgressIndicator());
       }
       if (snapshot.hasError) return loadError();
-      final allNotes = snapshot.data ?? [];
-      final notes = allNotes
-          .where((note) =>
-              (note['post_type'] as String? ?? 'community_update') ==
-              _noteFilter)
-          .toList();
-      final official = _noteFilter == 'official_announcement';
-
-      return Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 6,
-              alignment: WrapAlignment.center,
-              children: [
-                FilterChip(
-                  selected: official,
-                  avatar: const Icon(Icons.campaign_outlined, size: 18),
-                  label: Text(gr ? 'Επίσημες ανακοινώσεις' : 'Official notices'),
-                  onSelected: (_) => setState(
-                    () => _noteFilter = 'official_announcement',
-                  ),
-                ),
-                FilterChip(
-                  selected: !official,
-                  avatar: const Icon(Icons.chat_bubble_outline, size: 18),
-                  label: Text(gr ? 'Ενημερώσεις ενοίκων' : 'Resident updates'),
-                  onSelected: (_) =>
-                      setState(() => _noteFilter = 'community_update'),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: notes.isEmpty
-                ? emptyState(
-                    icon: official
-                        ? Icons.campaign_outlined
-                        : Icons.chat_bubble_outline,
-                    title: official
-                        ? (gr ? 'Δεν υπάρχουν επίσημες ανακοινώσεις' : 'No official announcements')
-                        : (gr ? 'Δεν υπάρχουν ενημερώσεις ενοίκων' : 'No resident updates'),
-                    description: official
-                        ? (gr
+      final notes = snapshot.data ?? [];
+      final official = postType == 'official_announcement';
+      if (notes.isEmpty) {
+        if (official && !canManageProperty) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.campaign_outlined, size: 42),
+                      const SizedBox(height: 12),
+                      Text(
+                        gr ? 'Δεν υπάρχουν επίσημες ανακοινώσεις' : 'No official announcements',
+                        style: Theme.of(context).textTheme.titleMedium,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        gr
                             ? 'Οι ανακοινώσεις του προέδρου ή διαχειριστή θα εμφανίζονται εδώ.'
-                            : 'Announcements from the building president or manager appear here.')
-                        : (gr
-                            ? 'Οι ένοικοι μπορούν να ενημερώνουν τους υπόλοιπους με σύντομα μηνύματα.'
-                            : 'Residents can share short updates with one another here.'),
-                    action: official
-                        ? (gr ? 'Νέα ανακοίνωση' : 'New announcement')
-                        : (gr ? 'Νέα ενημέρωση' : 'New update'),
-                    onPressed: createNote,
-                  )
-                : RefreshIndicator(
-                    onRefresh: refresh,
-                    child: ListView(
-                      padding: const EdgeInsets.all(16),
-                      children: notes.map((note) {
-                        final isOfficial =
-                            (note['post_type'] as String? ?? 'community_update') ==
-                                'official_announcement';
-                        return Card(
-                          child: ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: isOfficial
-                                  ? Theme.of(context).colorScheme.primaryContainer
-                                  : Theme.of(context).colorScheme.secondaryContainer,
-                              child: Icon(isOfficial
-                                  ? Icons.campaign_outlined
-                                  : Icons.chat_bubble_outline),
-                            ),
-                            title: Text(note['body'] as String? ?? ''),
-                            subtitle: Text(
-                              '${isOfficial ? (gr ? 'Πρόεδρος / διαχειριστής' : 'President / manager') : (gr ? 'Ένοικος' : 'Resident')} · ${formatTimestamp(note['created_at'])}',
-                            ),
-                            trailing: (isAdmin || canManageProperty)
-                                ? PopupMenuButton<String>(
-                                    onSelected: (action) {
-                                      if (action == 'edit' && isAdmin) {
-                                        _editNote(note);
-                                      }
-                                      if (action == 'delete') {
-                                        _deleteRow(
-                                          'property_notes',
-                                          note['id'],
-                                          gr ? 'ανάρτηση' : 'post',
-                                        );
-                                      }
-                                    },
-                                    itemBuilder: (ctx) => [
-                                      if (isAdmin)
-                                        PopupMenuItem(
-                                          value: 'edit',
-                                          child: Text(gr ? 'Επεξεργασία' : 'Edit'),
-                                        ),
-                                      PopupMenuItem(
-                                        value: 'delete',
-                                        child: Text(gr ? 'Διαγραφή' : 'Delete'),
-                                      ),
-                                    ],
-                                  )
-                                : null,
-                          ),
-                        );
-                      }).toList(),
-                    ),
+                            : 'Announcements from the building president or manager appear here.',
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
                   ),
-          ),
-        ],
+                ),
+              ),
+            ),
+          );
+        }
+        return emptyState(
+          icon: official ? Icons.campaign_outlined : Icons.chat_bubble_outline,
+          title: official
+              ? (gr ? 'Δεν υπάρχουν επίσημες ανακοινώσεις' : 'No official announcements')
+              : (gr ? 'Δεν υπάρχουν ενημερώσεις ενοίκων' : 'No resident updates'),
+          description: official
+              ? (gr
+                  ? 'Οι ανακοινώσεις του προέδρου ή διαχειριστή θα εμφανίζονται εδώ.'
+                  : 'Announcements from the building president or manager appear here.')
+              : (gr
+                  ? 'Οι ένοικοι μπορούν να ενημερώνουν τους υπόλοιπους με σύντομα μηνύματα.'
+                  : 'Residents can share short updates with one another here.'),
+          action: official
+              ? (gr ? 'Νέα ανακοίνωση' : 'New announcement')
+              : (gr ? 'Νέα ενημέρωση' : 'New update'),
+          onPressed: () => createNote(postType),
+        );
+      }
+      return RefreshIndicator(
+        onRefresh: refresh,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: notes.map((note) {
+            return Card(
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: official
+                      ? Theme.of(context).colorScheme.primaryContainer
+                      : Theme.of(context).colorScheme.secondaryContainer,
+                  child: Icon(official
+                      ? Icons.campaign_outlined
+                      : Icons.chat_bubble_outline),
+                ),
+                title: Text(note['body'] as String? ?? ''),
+                subtitle: Text(
+                  '${official ? (gr ? 'Πρόεδρος / διαχειριστής' : 'President / manager') : (gr ? 'Ένοικος' : 'Resident')} · ${formatTimestamp(note['created_at'])}',
+                ),
+                trailing: (isAdmin || canManageProperty)
+                    ? PopupMenuButton<String>(
+                        onSelected: (action) {
+                          if (action == 'edit' && isAdmin) _editNote(note);
+                          if (action == 'delete') {
+                            _deleteRow(
+                              'property_notes',
+                              note['id'],
+                              gr ? 'ανάρτηση' : 'post',
+                            );
+                          }
+                        },
+                        itemBuilder: (ctx) => [
+                          if (isAdmin)
+                            PopupMenuItem(
+                              value: 'edit',
+                              child: Text(gr ? 'Επεξεργασία' : 'Edit'),
+                            ),
+                          PopupMenuItem(
+                            value: 'delete',
+                            child: Text(gr ? 'Διαγραφή' : 'Delete'),
+                          ),
+                        ],
+                      )
+                    : null,
+              ),
+            );
+          }).toList(),
+        ),
       );
     },
   );
@@ -2767,15 +2721,23 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
           ),
           Tab(
             icon: const Icon(Icons.campaign_outlined),
-            text: gr ? 'Ανακοινώσεις / ενημερώσεις' : 'Notices / updates',
+            text: gr ? 'Ανακοινώσεις' : 'Announcements',
           ),
           Tab(
-            icon: const Icon(Icons.account_balance_wallet_outlined),
-            text: gr ? 'Οικονομικά' : 'Finances',
+            icon: const Icon(Icons.chat_bubble_outline),
+            text: gr ? 'Ενημερώσεις ενοίκων' : 'Resident updates',
+          ),
+          Tab(
+            icon: const Icon(Icons.receipt_long_outlined),
+            text: gr ? 'Κοινόχρηστα' : 'Common charges',
           ),
           Tab(
             icon: const Icon(Icons.key_outlined),
-            text: gr ? 'Ενοίκια' : 'Rent',
+            text: gr ? 'Μισθώσεις' : 'Leases',
+          ),
+          Tab(
+            icon: const Icon(Icons.account_balance_outlined),
+            text: gr ? 'Λογιστική κατάσταση' : 'Accounting statement',
           ),
         ],
       ),
@@ -2783,22 +2745,26 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
     floatingActionButton: AnimatedBuilder(
       animation: tabs,
       builder: (context, _) {
-        if (tabs.index == 4 || (tabs.index == 3 && !canManageProperty)) return const SizedBox.shrink();
+        if (tabs.index == 5 ||
+            (tabs.index == 4 && !canManageProperty) ||
+            (tabs.index == 1 && !canManageProperty)) {
+          return const SizedBox.shrink();
+        }
         return FloatingActionButton.extended(
           onPressed: switch (tabs.index) {
             0 => createVote,
-            1 => createNote,
-            2 => createCharge,
+            1 => () => createNote('official_announcement'),
+            2 => () => createNote('community_update'),
+            3 => createCharge,
             _ => createRent,
           },
           icon: const Icon(Icons.add),
           label: Text(switch (tabs.index) {
             0 => gr ? 'Νέα ψηφοφορία' : 'New vote',
-            1 => canManageProperty
-                ? (gr ? 'Νέα ανακοίνωση / ενημέρωση' : 'New notice / update')
-                : (gr ? 'Νέα ενημέρωση ενοίκων' : 'New resident update'),
-            2 => gr ? 'Νέα χρέωση' : 'New charge',
-            _ => gr ? 'Νέο συμβόλαιο' : 'New agreement',
+            1 => gr ? 'Νέα ανακοίνωση' : 'New announcement',
+            2 => gr ? 'Νέα ενημέρωση' : 'New update',
+            3 => gr ? 'Νέα χρέωση κοινόχρηστων' : 'New common charge',
+            _ => gr ? 'Νέα μίσθωση' : 'New lease',
           }),
         );
       },
@@ -2807,7 +2773,8 @@ class _PropertyModulesScreenState extends State<PropertyModulesScreen>
       controller: tabs,
       children: [
         voteListing(),
-        notesListing(),
+        notesListing('official_announcement'),
+        notesListing('community_update'),
         chargeListing(),
         rentListing(),
         SharedFinancialOverviewScreen(
