@@ -284,6 +284,9 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
           propertyName: await _propertyName(propertyId),
           isGreek: _greek,
           initialTab: moduleTab,
+          initialNoticeType: type == 'community_update'
+              ? 'community_update'
+              : 'official_announcement',
         ),
       );
     } else {
