@@ -57,13 +57,16 @@ class _LeaseRenewalsScreenState extends State<LeaseRenewalsScreen> {
     final ownerTerms = TextEditingController(
       text: settings['owner_terms'] as String? ?? '',
     );
+    final ownerFurniture = TextEditingController(
+      text: settings['owner_furniture_inventory'] as String? ?? '',
+    );
     final smartBlockTerms = (settings[
               _gr ? 'smartblock_terms_el' : 'smartblock_terms_en'] as String? ?? '')
         .trim();
     final save = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(_gr ? 'Προεπιλεγμένοι όροι μίσθωσης' : 'Default lease terms'),
+        title: Text(_gr ? 'Προεπιλεγμένοι όροι και έπιπλα μίσθωσης' : 'Default lease terms and furniture'),
         content: SizedBox(
           width: 560,
           child: SingleChildScrollView(
@@ -82,6 +85,18 @@ class _LeaseRenewalsScreenState extends State<LeaseRenewalsScreen> {
                   maxLength: 10000,
                   decoration: InputDecoration(
                     labelText: _gr ? 'Οι σταθεροί όροι μου' : 'My standard terms',
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: ownerFurniture,
+                  minLines: 3,
+                  maxLines: 7,
+                  maxLength: 5000,
+                  decoration: InputDecoration(
+                    labelText: _gr ? 'Προεπιλεγμένα έπιπλα και απογραφή' : 'Default furniture and inventory',
+                    hintText: _gr ? 'π.χ. καναπές, τραπέζι, κρεβάτια, συσκευές' : 'e.g. sofa, table, beds, appliances',
                     border: const OutlineInputBorder(),
                   ),
                 ),
@@ -122,12 +137,13 @@ class _LeaseRenewalsScreenState extends State<LeaseRenewalsScreen> {
     );
     if (save == true) {
       try {
-        await _db.rpc('save_owner_lease_terms', params: {
+        await _db.rpc('save_owner_lease_defaults', params: {
           'p_terms': ownerTerms.text.trim(),
+          'p_furniture_inventory': ownerFurniture.text.trim(),
         });
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(_gr ? 'Οι προεπιλεγμένοι όροι αποθηκεύτηκαν.' : 'Default terms saved.'),
+            content: Text(_gr ? 'Οι προεπιλεγμένοι όροι και τα έπιπλα αποθηκεύτηκαν.' : 'Default terms and furniture saved.'),
           ));
         }
       } catch (error) {
@@ -139,6 +155,7 @@ class _LeaseRenewalsScreenState extends State<LeaseRenewalsScreen> {
       }
     }
     ownerTerms.dispose();
+    ownerFurniture.dispose();
   }
   Future<List<Map<String, dynamic>>> _load() async =>
       List<Map<String, dynamic>>.from(
@@ -681,7 +698,7 @@ class _LeaseRenewalsScreenState extends State<LeaseRenewalsScreen> {
               return Card(
                 child: ListTile(
                   leading: Icon(canManage ? Icons.menu_book_outlined : Icons.lock_outline),
-                  title: Text(_gr ? 'Προεπιλεγμένοι όροι μίσθωσης' : 'Default lease terms'),
+                  title: Text(_gr ? 'Προεπιλεγμένοι όροι και έπιπλα μίσθωσης' : 'Default lease terms and furniture'),
                   subtitle: Text(canManage
                     ? (_gr
                         ? 'Ρύθμισε τους σταθερούς όρους που προτείνονται σε κάθε νέα μίσθωση.'
