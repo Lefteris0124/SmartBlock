@@ -153,6 +153,27 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
   }
 
   Future<void> createLease(Map<String, dynamic> unit) async {
+    Map<String, dynamic> leaseTermSettings;
+    try {
+      final value = await db.rpc('get_owner_lease_term_settings');
+      leaseTermSettings = Map<String, dynamic>.from(value as Map);
+    } catch (error) {
+      message('${t('Δεν φορτώθηκαν οι όροι συμβολαίου', 'Could not load lease terms')}: $error');
+      return;
+    }
+    final ownerDefaultTerms =
+        (leaseTermSettings['owner_terms'] as String? ?? '').trim();
+    final smartBlockTerms = (leaseTermSettings[
+                gr ? 'smartblock_terms_el' : 'smartblock_terms_en'] as String? ??
+            '')
+        .trim();
+    if (smartBlockTerms.isEmpty) {
+      message(t(
+        'Οι υποχρεωτικοί όροι SmartBlock δεν έχουν ρυθμιστεί.',
+        'Required SmartBlock terms are not configured.',
+      ));
+      return;
+    }
     final ownerName = TextEditingController(
       text: db.auth.currentUser?.userMetadata?['full_name']?.toString() ?? '',
     );
@@ -170,14 +191,13 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
     final charges = TextEditingController(text: '0');
     final starts = TextEditingController();
     final ends = TextEditingController();
-    final terms = TextEditingController(text: t(
-      '1. Το ενοίκιο καταβάλλεται έως την συμφωνημένη ημερομηνία.\\n2. Τα κοινόχρηστα καταβάλλονται όπως αναγράφονται.\\n3. Ο ενοικιαστής διατηρεί το διαμέρισμα σε καλή κατάσταση και αναφέρει έγκαιρα βλάβες.\\n4. Η εγγύηση επιστρέφεται μετά τη λήξη, σύμφωνα με την κατάσταση του ακινήτου και τους εφαρμοστέους όρους.\\n5. Οι πληρωμές της μίσθωσης καταγράφονται στο SmartBlock. Το SmartBlock είναι ψηφιακό κανάλι διαχείρισης και δεν αποτελεί συμβαλλόμενο μέρος.',
-      '1. Rent is paid by the agreed due date.\\n2. Common charges are paid as stated.\\n3. The tenant keeps the apartment in good condition and reports defects promptly.\\n4. The deposit is returned at lease end subject to the property condition and applicable terms.\\n5. Lease payments are recorded in SmartBlock. SmartBlock is a digital management channel and is not a party to the lease.',
-    ));
+    final ownerTerms = TextEditingController(text: ownerDefaultTerms);
+    final leaseOnlyTerms = TextEditingController();
     final form = GlobalKey<FormState>();
     var ownerIdType = 'national_id';
     var tenantIdType = 'national_id';
     var dueDay = 1;
+    var saveOwnerTermsAsDefault = true;
     final tenantSuggestions = <Map<String, dynamic>>[];
     Timer? tenantLookupTimer;
     final send = await showDialog<bool>(
@@ -436,19 +456,67 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
                   ),
                   const SizedBox(height: 14),
                   _formSection(
-                    t('Όροι συμφωνίας', 'Agreement terms'),
+                    t('Όροι μίσθωσης', 'Lease terms'),
                     Icons.gavel_outlined,
                     [
                       Text(
-                        t('Οι ενδεικτικοί όροι είναι επεξεργάσιμοι πριν αποσταλεί η πρόσκληση.', 'The suggested terms can be edited before you send the invitation.'),
+                        t(
+                          'Οι δικοί σου όροι φορτώνονται αυτόματα σε κάθε νέα μίσθωση. Επεξεργάσου τους εδώ και επίλεξε αν θέλεις να αποθηκευτούν ως προεπιλογή.',
+                          'Your terms load automatically for each new lease. Edit them here and choose whether to save them as your default.',
+                        ),
                         style: Theme.of(ctx).textTheme.bodySmall,
                       ),
                       TextFormField(
-                        controller: terms,
-                        minLines: 6,
-                        maxLines: 12,
-                        decoration: _input(t('Όροι *', 'Terms *'), Icons.article_outlined),
-                        validator: required,
+                        controller: ownerTerms,
+                        minLines: 4,
+                        maxLines: 8,
+                        maxLength: 10000,
+                        decoration: _input(
+                          t('Οι σταθεροί όροι μου', 'My standard terms'),
+                          Icons.bookmark_outline,
+                        ),
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        value: saveOwnerTermsAsDefault,
+                        onChanged: (value) => setDialog(
+                          () => saveOwnerTermsAsDefault = value,
+                        ),
+                        title: Text(t(
+                          'Αποθήκευση για τις επόμενες μισθώσεις',
+                          'Save for future leases',
+                        )),
+                        subtitle: Text(t(
+                          'Αν απενεργοποιηθεί, η αλλαγή θα ισχύσει μόνο για αυτό το συμβόλαιο.',
+                          'If turned off, this change applies only to this lease.',
+                        )),
+                      ),
+                      TextFormField(
+                        controller: leaseOnlyTerms,
+                        minLines: 2,
+                        maxLines: 5,
+                        maxLength: 5000,
+                        decoration: _input(
+                          t('Πρόσθετοι όροι μόνο για αυτή τη μίσθωση', 'Additional terms for this lease only'),
+                          Icons.note_add_outlined,
+                        ),
+                      ),
+                      Card(
+                        color: Theme.of(ctx).colorScheme.secondaryContainer,
+                        child: Padding(
+                          padding: const EdgeInsets.all(14),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                t('Σταθεροί όροι SmartBlock · μόνο για ανάγνωση', 'SmartBlock standard terms · read only'),
+                                style: Theme.of(ctx).textTheme.titleSmall,
+                              ),
+                              const SizedBox(height: 8),
+                              SelectableText(smartBlockTerms),
+                            ],
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -496,7 +564,9 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
                   t('Κοινόχρηστα ανά μήνα', 'Monthly common charges'): '€${charges.text.trim()}',
                   t('Ημέρα πληρωμής', 'Payment due day'): '${dueDay}',
                   t('Έπιπλα και απογραφή', 'Furniture and inventory'): '${unit['furniture_details'] ?? '—'}',
-                  t('Όροι συμφωνίας', 'Agreement terms'): terms.text.trim(),
+                  t('Σταθεροί όροι ιδιοκτήτη', 'Owner standard terms'): ownerTerms.text.trim(),
+                  t('Πρόσθετοι όροι αυτής της μίσθωσης', 'Additional terms for this lease'): leaseOnlyTerms.text.trim(),
+                  t('Σταθεροί όροι SmartBlock', 'SmartBlock standard terms'): smartBlockTerms,
                 };
                 final invite = await _showLeasePreview(details, unit['apartment_number'].toString());
                 if (invite == true && ctx.mounted) Navigator.of(ctx).pop(true);
@@ -534,7 +604,10 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
           'p_rent_due_day': dueDay,
           'p_furniture_and_inventory': '${unit['furnished'] == true ? t('Επιπλωμένο', 'Furnished') : t('Μη επιπλωμένο', 'Unfurnished')}: ${unit['furniture_details'] ?? ''}',
           'p_included_services': '',
-          'p_special_terms': terms.text.trim(),
+          'p_special_terms': [
+            ownerTerms.text.trim(),
+            leaseOnlyTerms.text.trim(),
+          ].where((value) => value.isNotEmpty).join('\n\n'),
           'p_guarantor_name': '',
           'p_guarantor_terms': '',
           'p_owner_confirm': true,
@@ -542,6 +615,16 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
         final response = Map<String, dynamic>.from(result as Map);
         final token = response['token'] as String;
         final offerId = response['offer_id'] as String;
+        String? templateSaveError;
+        if (saveOwnerTermsAsDefault) {
+          try {
+            await db.rpc('save_owner_lease_terms', params: {
+              'p_terms': ownerTerms.text.trim(),
+            });
+          } catch (error) {
+            templateSaveError = '$error';
+          }
+        }
         final url = Uri.https('lefteris0124.github.io', '/SmartBlock/', {'lease_invite': token});
         final subject = Uri.encodeComponent(t('Πρόσκληση για το μισθωτήριο SmartBlock', 'SmartBlock lease invitation'));
         final body = Uri.encodeComponent(t('Γεια σας ${tenantName.text.trim()},\\n\\nΟ ιδιοκτήτης σάς προσκαλεί να δείτε και να υπογράψετε ηλεκτρονικά το μισθωτήριο για το διαμέρισμα ${unit['apartment_number']}. Συνδεθείτε/εγγραφείτε με το email ${tenantEmail.text.trim()} από τον σύνδεσμο:\\n$url\\n\\nΑφού υπογράψετε, το συμβόλαιο θα επιστρέψει στον ιδιοκτήτη για τελική έγκριση.', 'Hello ${tenantName.text.trim()},\\n\\nThe owner invites you to review and sign the lease for apartment ${unit['apartment_number']}. Sign up or log in with ${tenantEmail.text.trim()} using this link:\\n$url\\n\\nAfter signing, the lease returns to the owner for final approval.'));
@@ -554,19 +637,30 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
           if (mounted) message(t('Το συμβόλαιο αποθηκεύτηκε. Άνοιξε το email για να στείλεις τον σύνδεσμο πρόσκλησης.', 'Lease saved. Email opened so you can send the invitation link.'));
         }
         await refresh();
+        if (templateSaveError != null && mounted) {
+          message(t(
+            'Το μισθωτήριο δημιουργήθηκε, αλλά δεν αποθηκεύτηκαν οι προεπιλεγμένοι όροι: $templateSaveError',
+            'The lease was created, but the default terms were not saved: $templateSaveError',
+          ));
+        }
       } catch (e) { message('$e'); }
       finally { if (mounted) setState(() => busy = false); }
     }
     for (final controller in [
       ownerName, ownerIdNo, ownerIdCountry, ownerIdExpiry, tenantName, tenantEmail, tenantPhone,
       tenantIdCountry, tenantIdNumber, tenantIdExpiry,
-      rent, deposit, charges, starts, ends, terms,
+      rent, deposit, charges, starts, ends, ownerTerms, leaseOnlyTerms,
     ]) {
       controller.dispose();
     }
   }
 
   Future<bool?> _showLeasePreview(Map<String, String> details, String apartmentNumber) {
+    final termLabels = [
+      t('Σταθεροί όροι ιδιοκτήτη', 'Owner standard terms'),
+      t('Πρόσθετοι όροι αυτής της μίσθωσης', 'Additional terms for this lease'),
+      t('Σταθεροί όροι SmartBlock', 'SmartBlock standard terms'),
+    ];
     return showDialog<bool>(
       context: context,
       builder: (previewContext) => AlertDialog(
@@ -588,15 +682,25 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
                   child: Text(t('Πρόχειρο προς έλεγχο πριν από την αποστολή', 'Draft for review before sending'), style: Theme.of(previewContext).textTheme.titleSmall),
                 ),
               ),
-              ...details.entries.where((entry) => entry.key != t('Όροι συμφωνίας', 'Agreement terms')).map((entry) => ListTile(
+              ...details.entries.where((entry) => !termLabels.contains(entry.key)).map((entry) => ListTile(
                 dense: true,
                 title: Text(entry.key, style: Theme.of(previewContext).textTheme.labelMedium),
                 subtitle: SelectableText(entry.value),
               )),
               const Divider(),
-              Text(t('Όροι συμφωνίας', 'Agreement terms'), style: Theme.of(previewContext).textTheme.titleMedium),
-              const SizedBox(height: 8),
-              SelectableText(details[t('Όροι συμφωνίας', 'Agreement terms')] ?? ''),
+              ...termLabels
+                  .where((label) => (details[label] ?? '').trim().isNotEmpty)
+                  .map((label) => Padding(
+                        padding: const EdgeInsets.only(top: 10),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(label, style: Theme.of(previewContext).textTheme.titleMedium),
+                            const SizedBox(height: 8),
+                            SelectableText(details[label]!),
+                          ],
+                        ),
+                      )),
               const SizedBox(height: 18),
               Text(t('Η ηλεκτρονική αποδοχή καταγράφει λογαριασμό και χρόνο· δεν είναι από μόνη της πιστοποιημένη ηλεκτρονική υπογραφή.', 'Electronic acceptance records the account and time; it is not by itself a certified electronic signature.'), style: Theme.of(previewContext).textTheme.bodySmall),
             ],
@@ -643,7 +747,11 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
     final regular = await PdfGoogleFonts.notoSansRegular();
     final bold = await PdfGoogleFonts.notoSansBold();
     final document = pw.Document();
-    final termsLabel = t('Όροι συμφωνίας', 'Agreement terms');
+    final termLabels = [
+      t('Σταθεροί όροι ιδιοκτήτη', 'Owner standard terms'),
+      t('Πρόσθετοι όροι αυτής της μίσθωσης', 'Additional terms for this lease'),
+      t('Σταθεροί όροι SmartBlock', 'SmartBlock standard terms'),
+    ];
     document.addPage(pw.MultiPage(
       pageFormat: format,
       theme: pw.ThemeData.withFont(base: regular, bold: bold),
@@ -664,7 +772,7 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
       build: (context) => [
         pw.Center(child: pw.Text(t('ΠΡΟΣΧΕΔΙΟ ΜΙΣΘΩΤΗΡΙΟΥ', 'LEASE AGREEMENT DRAFT'), style: pw.TextStyle(font: bold, fontSize: 18))),
         pw.SizedBox(height: 18),
-        ...details.entries.where((entry) => entry.key != termsLabel).map((entry) => pw.Container(
+        ...details.entries.where((entry) => !termLabels.contains(entry.key)).map((entry) => pw.Container(
           padding: const pw.EdgeInsets.symmetric(vertical: 5, horizontal: 6),
           decoration: pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey300))),
           child: pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
@@ -673,10 +781,22 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
             pw.Expanded(child: pw.Text(entry.value.isEmpty ? '—' : entry.value, style: const pw.TextStyle(fontSize: 9))),
           ]),
         )),
-        pw.SizedBox(height: 14),
-        pw.Text(termsLabel, style: pw.TextStyle(font: bold, fontSize: 12)),
-        pw.SizedBox(height: 6),
-        pw.Text(details[termsLabel] ?? '', style: const pw.TextStyle(fontSize: 10, lineSpacing: 3)),
+        ...termLabels
+            .where((label) => (details[label] ?? '').trim().isNotEmpty)
+            .map((label) => pw.Container(
+                  margin: const pw.EdgeInsets.only(top: 14),
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text(label, style: pw.TextStyle(font: bold, fontSize: 12)),
+                      pw.SizedBox(height: 6),
+                      pw.Text(
+                        details[label]!,
+                        style: const pw.TextStyle(fontSize: 10, lineSpacing: 3),
+                      ),
+                    ],
+                  ),
+                )),
         pw.SizedBox(height: 44),
         pw.Row(children: [
           pw.Expanded(child: pw.Column(children: [
