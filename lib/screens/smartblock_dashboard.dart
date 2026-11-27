@@ -144,6 +144,42 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
     if (mounted) setState(() => _userNotifications = _loadUserNotifications());
   }
 
+  Future<void> _markAllNotificationsRead() async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return;
+    try {
+      await _client
+          .from('user_notifications')
+          .update({'is_read': true})
+          .eq('user_id', userId)
+          .eq('is_read', false);
+      if (mounted) {
+        setState(() => _userNotifications = _loadUserNotifications());
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _greek
+                  ? 'Όλες οι ειδοποιήσεις σημειώθηκαν ως αναγνωσμένες.'
+                  : 'All notifications were marked as read.',
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _greek
+                  ? 'Δεν ήταν δυνατή η ενημέρωση των ειδοποιήσεων.'
+                  : 'Could not update notifications.',
+            ),
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _openNotification(Map<String, dynamic> item) async {
     final id = item['id'] as String?;
     if (id != null && item['is_read'] != true) {
@@ -419,14 +455,36 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
                   horizontal: 20,
                   vertical: 8,
                 ),
-                child: Row(
+                child: Column(
                   children: [
-                    const Icon(Icons.notifications_active_outlined),
-                    const SizedBox(width: 10),
-                    Text(
-                      _greek ? 'Ειδοποιήσεις' : 'Notifications',
-                      style: Theme.of(sheetContext).textTheme.titleLarge,
+                    Row(
+                      children: [
+                        const Icon(Icons.notifications_active_outlined),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            _greek ? 'Ειδοποιήσεις' : 'Notifications',
+                            style: Theme.of(sheetContext).textTheme.titleLarge,
+                          ),
+                        ),
+                      ],
                     ),
+                    if (notifications.any((item) => item['is_read'] != true))
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton.icon(
+                          onPressed: () async {
+                            await _markAllNotificationsRead();
+                            if (sheetContext.mounted) {
+                              Navigator.of(sheetContext).pop();
+                            }
+                          },
+                          icon: const Icon(Icons.done_all),
+                          label: Text(
+                            _greek ? 'Όλα αναγνωσμένα' : 'Mark all as read',
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
