@@ -335,8 +335,8 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
         onPressed: _openModules,
         icon: const Icon(Icons.dashboard_customize_outlined),
         label: Text(_isGreek
-            ? 'Ψηφοφορίες · Σημειώσεις · Οικονομικά'
-            : 'Votes · Notes · Finances'),
+            ? 'Ψηφοφορίες · Ανακοινώσεις · Ενημερώσεις'
+            : 'Votes · Announcements · Updates'),
       );
 
   Future<void> _openApartments() async {
@@ -612,8 +612,8 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
                           ? 'Εκκρεμεί η σύνδεση όλων των ιδιοκτητών'
                           : 'Link every owner account to continue'),
                       subtitle: Text(_isGreek
-                          ? 'Οι ψηφοφορίες, τα οικονομικά και η διαχείριση ενεργοποιούνται όταν κάθε ενεργός ιδιοκτήτης συνδεθεί με εγκεκριμένη εγγραφή. Επικοινώνησε με τον δημιουργό ή τον διαχειριστή του ακινήτου.'
-                          : 'Votes, finances and management unlock after every active owner is linked to an approved account. Ask the property creator or manager to link them.'),
+                          ? 'Οι ψηφοφορίες, οι ανακοινώσεις, οι ενημερώσεις και η διαχείριση ενεργοποιούνται όταν κάθε ενεργός ιδιοκτήτης συνδεθεί με εγκεκριμένη εγγραφή. Επικοινώνησε με τον δημιουργό ή τον διαχειριστή του ακινήτου.'
+                          : 'Votes, announcements, updates and management unlock after every active owner is linked to an approved account. Ask the property creator or manager to link them.'),
                     ),
                   );
                 },
