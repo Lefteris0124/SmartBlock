@@ -1866,6 +1866,22 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
             child: Text(gr ? 'Συντήρηση' : 'Maintenance'),
           ),
           DropdownMenuItem(
+            value: 'water_bill',
+            child: Text(gr ? 'Λογαριασμός νερού' : 'Water bill'),
+          ),
+          DropdownMenuItem(
+            value: 'electricity_bill',
+            child: Text(gr ? 'Λογαριασμός ρεύματος' : 'Electricity bill'),
+          ),
+          DropdownMenuItem(
+            value: 'elevator_maintenance',
+            child: Text(gr ? 'Συντήρηση ανελκυστήρα' : 'Elevator maintenance'),
+          ),
+          DropdownMenuItem(
+            value: 'cleaning',
+            child: Text(gr ? 'Καθαρισμός' : 'Cleaning'),
+          ),
+          DropdownMenuItem(
             value: 'other',
             child: Text(gr ? 'Άλλο έξοδο' : 'Other expense'),
           ),
@@ -2793,8 +2809,17 @@ class _PropertyManagementScreenState extends State<PropertyManagementScreen> {
             final apartment = row['apartment_number'] as String? ?? '';
             subtitle = gr ? 'Διαμέρισμα $apartment' : 'Apartment $apartment';
           } else if (type == 'expense') {
+            final category = switch (row['category'] as String? ?? 'other') {
+              'damage_repair' => gr ? 'Βλάβη / επισκευή' : 'Damage / repair',
+              'maintenance' => gr ? 'Συντήρηση' : 'Maintenance',
+              'water_bill' => gr ? 'Νερό' : 'Water',
+              'electricity_bill' => gr ? 'Ρεύμα' : 'Electricity',
+              'elevator_maintenance' => gr ? 'Συντήρηση ανελκυστήρα' : 'Elevator maintenance',
+              'cleaning' => gr ? 'Καθαρισμός' : 'Cleaning',
+              _ => gr ? 'Άλλο έξοδο' : 'Other expense',
+            };
             titleText =
-                '${row['description']} · ${_money(row['amount'] as num)}';
+                '$category · ${row['description']} · ${_money(row['amount'] as num)}';
             subtitle =
                 '${row['expense_date']} · ${row['status']} · ${row['supplier'] ?? ''}';
           } else if (type == 'insurance') {
