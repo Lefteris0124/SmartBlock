@@ -20,6 +20,124 @@ class _LeaseRenewalsScreenState extends State<LeaseRenewalsScreen> {
   late Future<List<Map<String, dynamic>>> _rows = _load();
   late Future<List<Map<String, dynamic>>> _tenantRequests = _loadTenantRequests();
   bool get _gr => widget.isGreek;
+  late final Future<bool> _canManageAnyProperty = _checkManagementAccess();
+
+  Future<bool> _checkManagementAccess() async {
+    if (widget.isStaff) return true;
+    try {
+      final properties = List<Map<String, dynamic>>.from(
+        await _db.from('properties').select('id'),
+      );
+      for (final property in properties) {
+        final canManage = await _db.rpc(
+          'can_manage_property',
+          params: {'target_property_id': property['id']},
+        );
+        if (canManage == true) return true;
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  Future<void> _manageDefaultLeaseTerms() async {
+    Map<String, dynamic> settings;
+    try {
+      final value = await _db.rpc('get_owner_lease_term_settings');
+      settings = Map<String, dynamic>.from(value as Map);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('${_gr ? 'Δεν φορτώθηκαν οι όροι μίσθωσης' : 'Could not load lease terms'}: $error'),
+        ));
+      }
+      return;
+    }
+    final ownerTerms = TextEditingController(
+      text: settings['owner_terms'] as String? ?? '',
+    );
+    final smartBlockTerms = (settings[
+              _gr ? 'smartblock_terms_el' : 'smartblock_terms_en'] as String? ?? '')
+        .trim();
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(_gr ? 'Προεπιλεγμένοι όροι μίσθωσης' : 'Default lease terms'),
+        content: SizedBox(
+          width: 560,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(_gr
+                  ? 'Οι όροι αποθηκεύονται στον λογαριασμό σου και προστίθενται σε κάθε νέα μίσθωση. Οι αλλαγές δεν επηρεάζουν συμβόλαια που έχουν ήδη σταλεί.'
+                  : 'These terms are saved to your account and added to each new lease. Changes do not affect contracts already sent.'),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: ownerTerms,
+                  minLines: 7,
+                  maxLines: 14,
+                  maxLength: 10000,
+                  decoration: InputDecoration(
+                    labelText: _gr ? 'Οι σταθεροί όροι μου' : 'My standard terms',
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Card(
+                  color: Theme.of(ctx).colorScheme.secondaryContainer,
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _gr ? 'Σταθεροί όροι SmartBlock · μόνο για ανάγνωση' : 'SmartBlock standard terms · read only',
+                          style: Theme.of(ctx).textTheme.titleSmall,
+                        ),
+                        const SizedBox(height: 8),
+                        SelectableText(smartBlockTerms),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(_gr ? 'Άκυρο' : 'Cancel'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: const Icon(Icons.save_outlined),
+            label: Text(_gr ? 'Αποθήκευση' : 'Save'),
+          ),
+        ],
+      ),
+    );
+    if (save == true) {
+      try {
+        await _db.rpc('save_owner_lease_terms', params: {
+          'p_terms': ownerTerms.text.trim(),
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(_gr ? 'Οι προεπιλεγμένοι όροι αποθηκεύτηκαν.' : 'Default terms saved.'),
+          ));
+        }
+      } catch (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('${_gr ? 'Δεν αποθηκεύτηκαν οι όροι' : 'Could not save terms'}: $error'),
+          ));
+        }
+      }
+    }
+    ownerTerms.dispose();
+  }
   Future<List<Map<String, dynamic>>> _load() async =>
       List<Map<String, dynamic>>.from(
         await _db
@@ -554,6 +672,24 @@ class _LeaseRenewalsScreenState extends State<LeaseRenewalsScreen> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
         children: [
+          FutureBuilder<bool>(
+            future: _canManageAnyProperty,
+            builder: (context, accessSnapshot) {
+              if (accessSnapshot.data != true) return const SizedBox.shrink();
+              return Card(
+                child: ListTile(
+                  leading: const Icon(Icons.menu_book_outlined),
+                  title: Text(_gr ? 'Προεπιλεγμένοι όροι μίσθωσης' : 'Default lease terms'),
+                  subtitle: Text(_gr
+                    ? 'Ρύθμισε τους σταθερούς όρους που προτείνονται σε κάθε νέα μίσθωση.'
+                    : 'Set the standard terms suggested for each new lease.'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: _manageDefaultLeaseTerms,
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 8),
           FutureBuilder<List<Map<String, dynamic>>>(
             future: _tenantRequests,
             builder: (context, snapshot) {
