@@ -545,6 +545,28 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(t('Άκυρο', 'Cancel'))),
+            OutlinedButton.icon(
+              onPressed: () async {
+                try {
+                  await db.rpc('save_owner_lease_terms', params: {
+                    'p_terms': ownerTerms.text.trim(),
+                  });
+                  setDialog(() => saveOwnerTermsAsDefault = true);
+                  if (mounted) {
+                    message(t(
+                      'Οι προεπιλεγμένοι όροι αποθηκεύτηκαν.',
+                      'Default terms saved.',
+                    ));
+                  }
+                } catch (error) {
+                  if (mounted) {
+                    message('${t('Δεν αποθηκεύτηκαν οι όροι', 'Could not save terms')}: $error');
+                  }
+                }
+              },
+              icon: const Icon(Icons.bookmark_add_outlined),
+              label: Text(t('Αποθήκευση όρων', 'Save terms')),
+            ),
             FilledButton.icon(
               onPressed: () async {
                 if (!form.currentState!.validate()) return;
