@@ -7,10 +7,12 @@ class LeaseRenewalsScreen extends StatefulWidget {
   const LeaseRenewalsScreen({
     required this.isGreek,
     this.isStaff = false,
+    this.isAdmin = false,
     super.key,
   });
   final bool isGreek;
   final bool isStaff;
+  final bool isAdmin;
   @override
   State<LeaseRenewalsScreen> createState() => _LeaseRenewalsScreenState();
 }
@@ -23,7 +25,7 @@ class _LeaseRenewalsScreenState extends State<LeaseRenewalsScreen> {
   late final Future<bool> _canManageAnyProperty = _checkManagementAccess();
 
   Future<bool> _checkManagementAccess() async {
-    if (widget.isStaff) return true;
+    if (widget.isStaff || widget.isAdmin) return true;
     try {
       final properties = List<Map<String, dynamic>>.from(
         await _db.from('properties').select('id'),
@@ -675,16 +677,26 @@ class _LeaseRenewalsScreenState extends State<LeaseRenewalsScreen> {
           FutureBuilder<bool>(
             future: _canManageAnyProperty,
             builder: (context, accessSnapshot) {
-              if (accessSnapshot.data != true) return const SizedBox.shrink();
+              final canManage = accessSnapshot.data == true;
               return Card(
                 child: ListTile(
-                  leading: const Icon(Icons.menu_book_outlined),
+                  leading: Icon(canManage ? Icons.menu_book_outlined : Icons.lock_outline),
                   title: Text(_gr ? 'Προεπιλεγμένοι όροι μίσθωσης' : 'Default lease terms'),
-                  subtitle: Text(_gr
-                    ? 'Ρύθμισε τους σταθερούς όρους που προτείνονται σε κάθε νέα μίσθωση.'
-                    : 'Set the standard terms suggested for each new lease.'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: _manageDefaultLeaseTerms,
+                  subtitle: Text(canManage
+                    ? (_gr
+                        ? 'Ρύθμισε τους σταθερούς όρους που προτείνονται σε κάθε νέα μίσθωση.'
+                        : 'Set the standard terms suggested for each new lease.')
+                    : (_gr
+                        ? 'Διαθέσιμο σε ιδιοκτήτες και διαχειριστές ακινήτων.'
+                        : 'Available to property owners and managers.')),
+                  trailing: Icon(canManage ? Icons.chevron_right : Icons.lock_outline),
+                  onTap: canManage
+                      ? _manageDefaultLeaseTerms
+                      : () => ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            content: Text(_gr
+                                ? 'Χρειάζεται πρόσβαση ιδιοκτήτη ή διαχειριστή ακινήτου.'
+                                : 'Owner or property manager access is required.'),
+                          )),
                 ),
               );
             },
