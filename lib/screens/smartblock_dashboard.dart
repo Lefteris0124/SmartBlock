@@ -195,6 +195,7 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
     final relatedId = item['related_id'] as String?;
     final propertyId = item['property_id'] as String?;
     final isStaff = await _isStaff();
+    final isAdmin = await _client.rpc('is_smartblock_admin') == true;
 
     if (type == 'registration' || relatedType == 'account_role_requests') {
       await _open(AdminReviewScreen(isGreek: _greek, initialTab: 1));
@@ -209,7 +210,7 @@ class _SmartBlockDashboardState extends State<SmartBlockDashboard> {
       return;
     }
     if (type.startsWith('lease_') || relatedType.contains('lease_renewal')) {
-      await _open(LeaseRenewalsScreen(isGreek: _greek, isStaff: isStaff));
+      await _open(LeaseRenewalsScreen(isGreek: _greek, isStaff: isStaff, isAdmin: isAdmin));
       return;
     }
     if (relatedType.startsWith('accounting_') || type == 'accounting_statement') {
@@ -1447,7 +1448,7 @@ FutureBuilder<List<Map<String, dynamic>>>(
                 detail: _greek
                     ? 'Δες και αποδέξου ηλεκτρονικά τις ανανεώσεις που αφορούν τον λογαριασμό σου.'
                     : 'Review and electronically accept renewals linked to your account.',
-                onTap: () => _open(LeaseRenewalsScreen(isGreek: _greek, isStaff: access.isStaff)),
+                onTap: () => _open(LeaseRenewalsScreen(isGreek: _greek, isStaff: access.isStaff, isAdmin: access.isAdmin)),
               ),
               _RoleCard(
                 icon: Icons.support_agent_outlined,
