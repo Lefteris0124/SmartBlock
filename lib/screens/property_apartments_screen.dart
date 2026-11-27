@@ -843,6 +843,102 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
     return document.save();
   }
 
+  Future<void> manageDefaultLeaseTerms() async {
+    Map<String, dynamic> settings;
+    try {
+      final value = await db.rpc('get_owner_lease_term_settings');
+      settings = Map<String, dynamic>.from(value as Map);
+    } catch (error) {
+      message('${t('Δεν φορτώθηκαν οι όροι μίσθωσης', 'Could not load lease terms')}: $error');
+      return;
+    }
+
+    final ownerTerms = TextEditingController(
+      text: settings['owner_terms'] as String? ?? '',
+    );
+    final smartBlockTerms = (settings[
+                gr ? 'smartblock_terms_el' : 'smartblock_terms_en'] as String? ??
+            '')
+        .trim();
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(t('Προεπιλεγμένοι όροι μίσθωσης', 'Default lease terms')),
+        content: SizedBox(
+          width: 560,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(t(
+                  'Αυτοί οι όροι αποθηκεύονται στον λογαριασμό σου και προτείνονται αυτόματα σε κάθε νέα μίσθωση. Οι αλλαγές δεν επηρεάζουν συμβόλαια που έχουν ήδη σταλεί.',
+                  'These terms are saved to your account and loaded automatically for each new lease. Changes do not affect contracts already sent.',
+                )),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: ownerTerms,
+                  minLines: 7,
+                  maxLines: 14,
+                  maxLength: 10000,
+                  decoration: InputDecoration(
+                    labelText: t('Οι σταθεροί όροι μου', 'My standard terms'),
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Card(
+                  color: Theme.of(ctx).colorScheme.secondaryContainer,
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          t('Σταθεροί όροι SmartBlock · μόνο για ανάγνωση', 'SmartBlock standard terms · read only'),
+                          style: Theme.of(ctx).textTheme.titleSmall,
+                        ),
+                        const SizedBox(height: 8),
+                        SelectableText(smartBlockTerms),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(t('Άκυρο', 'Cancel')),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: const Icon(Icons.save_outlined),
+            label: Text(t('Αποθήκευση', 'Save')),
+          ),
+        ],
+      ),
+    );
+
+    if (save == true) {
+      try {
+        await db.rpc('save_owner_lease_terms', params: {
+          'p_terms': ownerTerms.text.trim(),
+        });
+        if (mounted) {
+          message(t('Οι προεπιλεγμένοι όροι αποθηκεύτηκαν.', 'Default terms saved.'));
+        }
+      } catch (error) {
+        if (mounted) {
+          message('${t('Δεν αποθηκεύτηκαν οι όροι', 'Could not save terms')}: $error');
+        }
+      }
+    }
+    ownerTerms.dispose();
+  }
+
   Future<void> reviewLease(Map<String, dynamic> item) async {
     try {
       final value = await db.rpc('get_lease_contract_offer_for_owner', params: {'p_offer_id': item['id']});
@@ -894,7 +990,17 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
       Text(t('Διαμερίσματα', 'Apartments'), style: Theme.of(context).textTheme.titleLarge),
       if (apartments.isEmpty) Padding(padding: const EdgeInsets.all(20), child: Text(t('Δεν υπάρχουν διαμερίσματα. Πρόσθεσε ένα για να ξεκινήσεις μίσθωση.', 'No apartments yet. Add one to start a lease.'))),
       ...apartments.map((u) => Card(child: ListTile(leading: const CircleAvatar(child: Icon(Icons.apartment_outlined)), title: Text('${t('Διαμέρισμα', 'Apartment')} ${u['apartment_number']}'), subtitle: Text('${u['room_count']} ${t('δωμάτια', 'rooms')} · ${u['area_sqm']} m² · ${u['furnished'] == true ? t('Επιπλωμένο', 'Furnished') : t('Μη επιπλωμένο', 'Unfurnished')}\n${u['furniture_details'] ?? ''} ${u['comments'] ?? ''}'), isThreeLine: true, trailing: IconButton(tooltip: t('Νέο συμβόλαιο', 'New lease'), icon: const Icon(Icons.description_outlined), onPressed: () => createLease(u))))),
-      const SizedBox(height: 18), Text(t('Συμβόλαια / προσκλήσεις', 'Leases / invitations'), style: Theme.of(context).textTheme.titleLarge),
+      const SizedBox(height: 18),
+      Text(t('Συμβόλαια / προσκλήσεις', 'Leases / invitations'), style: Theme.of(context).textTheme.titleLarge),
+      const SizedBox(height: 8),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: OutlinedButton.icon(
+          onPressed: busy ? null : manageDefaultLeaseTerms,
+          icon: const Icon(Icons.bookmark_outline),
+          label: Text(t('Προεπιλεγμένοι όροι μίσθωσης', 'Default lease terms')),
+        ),
+      ),
       if (leases.isEmpty) Padding(padding: const EdgeInsets.all(20), child: Text(t('Τα συμβόλαια που δημιουργείς θα εμφανίζονται εδώ.', 'Leases you create will appear here.'))),
       ...leases.map((l) => Card(child: ListTile(leading: const Icon(Icons.assignment_outlined), title: Text('${l['unit_reference']} · ${l['tenant_name']} · €${l['monthly_rent']}'), subtitle: Text('${l['tenant_email']} · ${l['start_date']} – ${l['end_date']}\n${l['status']}'), isThreeLine: true, trailing: l['status'] == 'awaiting_owner' ? IconButton(tooltip: t('Έλεγχος και υπογραφή','Review and sign'), icon: const Icon(Icons.fact_check_outlined), onPressed: busy ? null : () => reviewLease(l)) : null))),
     ])),
