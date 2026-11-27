@@ -23,6 +23,7 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
   bool busy = false;
   List<Map<String, dynamic>> apartments = [];
   List<Map<String, dynamic>> leases = [];
+  String propertyAddress = '';
   bool get gr => widget.isGreek;
   String t(String el, String en) => gr ? el : en;
 
@@ -34,11 +35,16 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
       final result = await Future.wait<dynamic>([
         db.from('property_apartments').select().eq('property_id', widget.propertyId).order('apartment_number'),
         db.rpc('list_lease_contract_offers', params: {'p_property_id': widget.propertyId}),
+        db.from('properties').select('address,city,country').eq('id', widget.propertyId).maybeSingle(),
       ]);
       if (!mounted) return;
       setState(() {
         apartments = List<Map<String, dynamic>>.from(result[0]);
         leases = List<Map<String, dynamic>>.from(result[1]);
+        final property = Map<String, dynamic>.from(result[2] as Map? ?? {});
+        propertyAddress = [property['address'], property['city'], property['country']]
+            .where((part) => part != null && part.toString().trim().isNotEmpty)
+            .join(', ');
       });
     } catch (e) { if (mounted) message('$e'); }
   }
@@ -163,6 +169,8 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
     }
     final ownerDefaultTerms =
         (leaseTermSettings['owner_terms'] as String? ?? '').trim();
+    final ownerFurnitureDefault =
+        (leaseTermSettings['owner_furniture_inventory'] as String? ?? '').trim();
     final smartBlockTerms = (leaseTermSettings[
                 gr ? 'smartblock_terms_el' : 'smartblock_terms_en'] as String? ??
             '')
@@ -192,6 +200,11 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
     final starts = TextEditingController();
     final ends = TextEditingController();
     final ownerTerms = TextEditingController(text: ownerDefaultTerms);
+    final furnitureInventory = TextEditingController(
+      text: ownerFurnitureDefault.isNotEmpty
+          ? ownerFurnitureDefault
+          : (unit['furniture_details']?.toString() ?? ''),
+    );
     final leaseOnlyTerms = TextEditingController();
     final form = GlobalKey<FormState>();
     var ownerIdType = 'national_id';
@@ -209,10 +222,15 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(t('Νέο συμβόλαιο', 'New lease')),
-              const SizedBox(height: 5),
-              Text(
-                '${t('Διαμέρισμα', 'Apartment')} ${unit['apartment_number']} · ${widget.propertyName}',
-                style: Theme.of(ctx).textTheme.bodyMedium,
+              const SizedBox(height: 7),
+              Card(
+                color: Theme.of(ctx).colorScheme.secondaryContainer,
+                child: ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.location_city_outlined),
+                  title: Text(widget.propertyName, style: const TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: Text('${propertyAddress.isEmpty ? t('Διεύθυνση δεν έχει καταχωρηθεί', 'Address not recorded') : propertyAddress}\\n${t('Αριθμός διαμερίσματος', 'Apartment number')}: ${unit['apartment_number']}'),
+                ),
               ),
               const SizedBox(height: 6),
               Text(
@@ -391,6 +409,23 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
                   ),
                   const SizedBox(height: 14),
                   _formSection(
+                    t('Στοιχεία διαμερίσματος και έπιπλα', 'Apartment details and furniture'),
+                    Icons.chair_alt_outlined,
+                    [
+                      Text('${t('Διαμέρισμα', 'Apartment')} ${unit['apartment_number']} · ${unit['room_count']} ${t('δωμάτια', 'rooms')} · ${unit['area_sqm']} m²'),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        controller: furnitureInventory,
+                        minLines: 3,
+                        maxLines: 7,
+                        maxLength: 5000,
+                        decoration: _input(t('Έπιπλα και απογραφή', 'Furniture and inventory'), Icons.chair_outlined, hint: t('π.χ. καναπές, τραπέζι, κρεβάτι, συσκευές', 'e.g. sofa, table, bed, appliances')),
+                      ),
+                      Text(t('Προσυμπληρώνεται από τα σταθερά έπιπλα του λογαριασμού ή από τα στοιχεία αυτού του διαμερίσματος. Μπορείς να το προσαρμόσεις για τη συγκεκριμένη μίσθωση.', 'Pre-filled from your saved defaults or this apartment. You can tailor it for this lease.'), style: Theme.of(ctx).textTheme.bodySmall),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  _formSection(
                     t('Οικονομικοί όροι', 'Financial terms'),
                     Icons.euro,
                     [
@@ -548,8 +583,9 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
             OutlinedButton.icon(
               onPressed: () async {
                 try {
-                  await db.rpc('save_owner_lease_terms', params: {
+                  await db.rpc('save_owner_lease_defaults', params: {
                     'p_terms': ownerTerms.text.trim(),
+                    'p_furniture_inventory': furnitureInventory.text.trim(),
                   });
                   setDialog(() => saveOwnerTermsAsDefault = true);
                   if (mounted) {
@@ -571,8 +607,9 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
               onPressed: () async {
                 if (!form.currentState!.validate()) return;
                 final details = <String, String>{
-                  t('Ακίνητο', 'Property'): widget.propertyName,
-                  t('Διαμέρισμα', 'Apartment'): '${unit['apartment_number']}',
+                  t('Ονομασία πολυκατοικίας', 'Building name'): widget.propertyName,
+                  t('Διεύθυνση ακινήτου', 'Property address'): propertyAddress.isEmpty ? '—' : propertyAddress,
+                  t('Αριθμός διαμερίσματος', 'Apartment number'): '${unit['apartment_number']}',
                   t('Χώρος', 'Unit details'): '${unit['room_count']} ${t('δωμάτια', 'rooms')} · ${unit['area_sqm']} m² · ${unit['furnished'] == true ? t('Επιπλωμένο', 'Furnished') : t('Μη επιπλωμένο', 'Unfurnished')}',
                   t('Ιδιοκτήτης', 'Owner'): ownerName.text.trim(),
                   t('Έγγραφο ιδιοκτήτη', 'Owner document'): '${ownerIdType == 'passport' ? t('Διαβατήριο', 'Passport') : t('Ταυτότητα', 'National ID')} · ${ownerIdCountry.text.trim()} · ${ownerIdNo.text.trim()} · ${t('λήγει', 'expires')} ${ownerIdExpiry.text}',
@@ -585,7 +622,7 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
                   t('Εγγύηση', 'Deposit'): '€${deposit.text.trim()}',
                   t('Κοινόχρηστα ανά μήνα', 'Monthly common charges'): '€${charges.text.trim()}',
                   t('Ημέρα πληρωμής', 'Payment due day'): '${dueDay}',
-                  t('Έπιπλα και απογραφή', 'Furniture and inventory'): '${unit['furniture_details'] ?? '—'}',
+                  t('Έπιπλα και απογραφή', 'Furniture and inventory'): furnitureInventory.text.trim().isEmpty ? '—' : furnitureInventory.text.trim(),
                   t('Σταθεροί όροι ιδιοκτήτη', 'Owner standard terms'): ownerTerms.text.trim(),
                   t('Πρόσθετοι όροι αυτής της μίσθωσης', 'Additional terms for this lease'): leaseOnlyTerms.text.trim(),
                   t('Σταθεροί όροι SmartBlock', 'SmartBlock standard terms'): smartBlockTerms,
@@ -624,7 +661,7 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
           'p_start_date': starts.text,
           'p_end_date': ends.text,
           'p_rent_due_day': dueDay,
-          'p_furniture_and_inventory': '${unit['furnished'] == true ? t('Επιπλωμένο', 'Furnished') : t('Μη επιπλωμένο', 'Unfurnished')}: ${unit['furniture_details'] ?? ''}',
+          'p_furniture_and_inventory': '${unit['furnished'] == true ? t('Επιπλωμένο', 'Furnished') : t('Μη επιπλωμένο', 'Unfurnished')}: ${furnitureInventory.text.trim()}',
           'p_included_services': '',
           'p_special_terms': [
             ownerTerms.text.trim(),
@@ -640,8 +677,9 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
         String? templateSaveError;
         if (saveOwnerTermsAsDefault) {
           try {
-            await db.rpc('save_owner_lease_terms', params: {
+            await db.rpc('save_owner_lease_defaults', params: {
               'p_terms': ownerTerms.text.trim(),
+              'p_furniture_inventory': furnitureInventory.text.trim(),
             });
           } catch (error) {
             templateSaveError = '$error';
@@ -671,7 +709,7 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
     for (final controller in [
       ownerName, ownerIdNo, ownerIdCountry, ownerIdExpiry, tenantName, tenantEmail, tenantPhone,
       tenantIdCountry, tenantIdNumber, tenantIdExpiry,
-      rent, deposit, charges, starts, ends, ownerTerms, leaseOnlyTerms,
+      rent, deposit, charges, starts, ends, ownerTerms, furnitureInventory, leaseOnlyTerms,
     ]) {
       controller.dispose();
     }
@@ -852,7 +890,7 @@ class _PropertyApartmentsScreenState extends State<PropertyApartmentsScreen> {
       final approve = await showDialog<bool>(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx, setDialog) => AlertDialog(
         title: Text(t('Τελικός έλεγχος συμβολαίου', 'Final lease review')),
         content: SizedBox(width: 520, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('${offer['property_name'] ?? ''} · ${offer['unit_reference']}'),
+          Text('${offer['property_name'] ?? ''} · ${offer['unit_reference']}\\n${offer['property_address'] ?? ''}'),
           Text('${offer['tenant_name']} · ${offer['tenant_email']}'),
           Text('${offer['start_date']} – ${offer['end_date']}'),
           Text('${t('Ενοίκιο','Rent')}: €${offer['monthly_rent']} · ${t('Εγγύηση','Deposit')}: €${offer['deposit_amount']} · ${t('Κοινόχρηστα','Common charges')}: €${offer['common_charges']}'),
