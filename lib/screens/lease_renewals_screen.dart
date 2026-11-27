@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../smartblock_trial_session.dart';
 import 'property_modules_screen.dart';
+import 'sample_lease_preview_screen.dart';
 
 class LeaseRenewalsScreen extends StatefulWidget {
   const LeaseRenewalsScreen({
@@ -691,6 +692,20 @@ class _LeaseRenewalsScreenState extends State<LeaseRenewalsScreen> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
         children: [
+          Card(
+            child: ListTile(
+              leading: const CircleAvatar(child: Icon(Icons.visibility_outlined)),
+              title: Text(_gr ? 'Προβολή συμπληρωμένου δείγματος συμβολαίου' : 'View completed lease sample'),
+              subtitle: Text(_gr
+                  ? 'Δες πώς φαίνονται τα στοιχεία ακινήτου, οι όροι, τα έπιπλα και οι υπογραφές.'
+                  : 'See how property details, terms, furniture and signatures appear.'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => SampleLeasePreviewScreen(isGreek: _gr),
+              )),
+            ),
+          ),
+          const SizedBox(height: 8),
           FutureBuilder<bool>(
             future: _canManageAnyProperty,
             builder: (context, accessSnapshot) {
